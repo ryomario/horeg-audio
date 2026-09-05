@@ -434,12 +434,18 @@ export class UI {
     };
 
     this.submitUrlBtn.addEventListener('click', handleUrlSubmit);
-    this.urlInput.addEventListener('keydown', (e) => {
+    const handleUrlInputKeyDown = (e: KeyboardEvent) => {
+      // Allow space, arrows, and text navigation without triggering player shortcuts
+      e.stopPropagation();
       if (e.key === 'Enter') {
         e.preventDefault();
         handleUrlSubmit();
       }
-    });
+    };
+
+    this.urlInput.addEventListener('keydown', handleUrlInputKeyDown);
+    this.titleInput.addEventListener('keydown', handleUrlInputKeyDown);
+    this.artistInput.addEventListener('keydown', handleUrlInputKeyDown);
 
     this.cancelAddBtn.addEventListener('click', () => {
       this.closeAddPanel();

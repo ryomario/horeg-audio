@@ -141,8 +141,26 @@ export class HoregAudio {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    // Only intercept if active target is within container/shadow
+    const path = e.composedPath ? e.composedPath() : [];
+    const target = (path.length > 0 ? path[0] : e.target) as HTMLElement | null;
+    const activeEl = (this.shadow?.activeElement || document.activeElement) as HTMLElement | null;
+
+    const isInputElement = (el: HTMLElement | null): boolean => {
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    };
+
+    // Do not intercept if user is typing or interacting with form controls
+    if (isInputElement(target) || isInputElement(activeEl)) {
+      return;
+    }
+
     if (e.code === 'Space') {
+      // If a button is focused, let space trigger native button click
+      if (target?.tagName === 'BUTTON' || activeEl?.tagName === 'BUTTON') {
+        return;
+      }
       e.preventDefault();
       this.toggle();
     } else if (e.key === 'ArrowRight' && !e.shiftKey) {

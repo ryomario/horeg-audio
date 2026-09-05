@@ -57,6 +57,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       display: block;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       box-sizing: border-box;
+      outline: none;
       user-select: none;
       -webkit-user-select: none;
     }
@@ -79,6 +80,20 @@ export function generateStyles(theme: HoregTheme = {}): string {
       width: 100%;
       margin: 0 auto;
       transition: box-shadow 0.3s ease, border-color 0.3s ease;
+    }
+
+    /* Player Box active glow when focused within */
+    :host(:focus) .horeg-player-box,
+    :host(:focus-within) .horeg-player-box,
+    .horeg-player-box:focus-within {
+      border-color: var(--horeg-glow);
+      box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.95), 0 0 30px -2px var(--horeg-glow), 0 0 10px var(--horeg-glow);
+    }
+
+    :host(:focus) .horeg-player-box .horeg-bolt,
+    :host(:focus-within) .horeg-player-box .horeg-bolt,
+    .horeg-player-box:focus-within .horeg-bolt {
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3), 0 0 4px var(--horeg-glow);
     }
 
     .horeg-speaker-grill {
@@ -336,13 +351,21 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-surface-hover);
     }
 
+    .horeg-btn:active {
+      transform: scale(0.92);
+      filter: brightness(1.2);
+    }
+
     .horeg-btn:focus-visible {
       outline: 2px solid var(--horeg-glow);
+      outline-offset: 1px;
     }
 
     .horeg-btn.active {
       color: var(--horeg-glow);
+      background: rgba(255, 255, 255, 0.06);
       text-shadow: 0 0 8px var(--horeg-glow);
+      box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.05);
     }
 
     /* Primary Play / Pause Button with Neon Glow Pulse */
@@ -504,12 +527,23 @@ export function generateStyles(theme: HoregTheme = {}): string {
       transition: all 0.15s ease;
     }
 
-    .horeg-btn-add-track:hover,
-    .horeg-btn-add-track.active {
+    .horeg-btn-add-track:hover {
       background: #27272a;
       border-color: var(--horeg-glow);
       color: var(--horeg-glow);
       box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+    }
+
+    .horeg-btn-add-track.active {
+      background: #27272a;
+      border-color: var(--horeg-glow);
+      color: var(--horeg-glow);
+      box-shadow: 0 0 12px var(--horeg-glow);
+      text-shadow: 0 0 6px var(--horeg-glow);
+    }
+
+    .horeg-btn-add-track:active {
+      transform: scale(0.95);
     }
 
     /* Add Track Panel Form */
@@ -563,7 +597,12 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: #27272a;
       color: var(--horeg-glow);
       border-color: var(--horeg-glow);
-      box-shadow: 0 0 8px rgba(245, 158, 11, 0.25);
+      box-shadow: 0 0 10px var(--horeg-glow);
+      text-shadow: 0 0 6px var(--horeg-glow);
+    }
+
+    .horeg-tab-btn:active {
+      transform: scale(0.97);
     }
 
     .horeg-tab-pane {
@@ -628,12 +667,14 @@ export function generateStyles(theme: HoregTheme = {}): string {
       border-radius: 5px;
       color: var(--horeg-text-main);
       outline: none;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
     }
 
     .horeg-input-field:focus {
       border-color: var(--horeg-glow);
-      box-shadow: 0 0 6px rgba(245, 158, 11, 0.3);
+      background: #18181b;
+      box-shadow: 0 0 0 1px var(--horeg-glow), 0 0 10px var(--horeg-glow);
+      outline: none;
     }
 
     .horeg-input-field::placeholder {
@@ -669,6 +710,11 @@ export function generateStyles(theme: HoregTheme = {}): string {
       transform: translateY(-1px);
     }
 
+    .horeg-btn-submit:active {
+      transform: scale(0.96);
+      filter: brightness(1.15);
+    }
+
     .horeg-btn-cancel {
       padding: 6px 10px;
       font-size: 11px;
@@ -678,15 +724,18 @@ export function generateStyles(theme: HoregTheme = {}): string {
       border: 1px solid transparent;
       border-radius: 5px;
       cursor: pointer;
-      transition: color 0.15s ease;
+      transition: color 0.15s ease, transform 0.1s ease;
     }
 
     .horeg-btn-cancel:hover {
       color: var(--horeg-text-main);
     }
 
+    .horeg-btn-cancel:active {
+      transform: scale(0.96);
+    }
+
     .horeg-drawer-inner {
-      padding: 8px 12px;
       padding: 6px 10px 10px 10px;
       display: flex;
       flex-direction: column;
@@ -709,9 +758,38 @@ export function generateStyles(theme: HoregTheme = {}): string {
     }
 
     .horeg-track-item.active {
-      background: #27272a;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
       color: var(--horeg-glow);
       border-left: 3px solid var(--horeg-glow);
+      box-shadow: inset 3px 0 6px -2px var(--horeg-glow), 0 2px 8px rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+
+    .horeg-track-item.active .horeg-track-num {
+      color: var(--horeg-glow);
+      font-weight: 700;
+      text-shadow: 0 0 8px var(--horeg-glow);
+    }
+
+    .horeg-track-item.active .horeg-item-title {
+      color: var(--horeg-glow);
+      font-weight: 700;
+      text-shadow: 0 0 8px var(--horeg-glow);
+    }
+
+    .horeg-track-item.active .horeg-item-artist {
+      color: var(--horeg-text-main);
+      opacity: 0.9;
+    }
+
+    .horeg-track-item.active .horeg-item-duration {
+      color: var(--horeg-glow);
+      opacity: 0.9;
+    }
+
+    .horeg-track-item:focus-visible {
+      outline: 2px solid var(--horeg-glow);
+      outline-offset: -1px;
     }
 
     .horeg-track-num {
