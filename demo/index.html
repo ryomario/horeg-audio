@@ -182,11 +182,14 @@
         <button class="api-btn" id="api-play">player.play()</button>
         <button class="api-btn" id="api-pause">player.pause()</button>
         <button class="api-btn" id="api-toggle">player.toggle()</button>
-        <button class="api-btn" id="api-prev">player.prev()</button>
-        <button class="api-btn" id="api-next">player.next()</button>
-        <button class="api-btn" id="api-seek">player.seek(15)</button>
-        <button class="api-btn" id="api-vol-up">Volume +10%</button>
-        <button class="api-btn" id="api-vol-down">Volume -10%</button>
+        <button class="api-btn" id="api-prev">⏮ player.prev()</button>
+        <button class="api-btn" id="api-next">⏭ player.next()</button>
+        <button class="api-btn" id="api-track-1">Track 1</button>
+        <button class="api-btn" id="api-track-2">Track 2</button>
+        <button class="api-btn" id="api-track-3">Track 3</button>
+        <button class="api-btn" id="api-seek">player.seek(5)</button>
+        <button class="api-btn" id="api-vol-up">Vol +10%</button>
+        <button class="api-btn" id="api-vol-down">Vol -10%</button>
       </div>
 
       <div class="event-log" id="event-log">
@@ -202,15 +205,13 @@
   <script type="module">
     import { HoregAudio } from '../src/index.ts';
 
-    // Helper: generate a quick melodic/bass synthetic audio for offline testing
-    function createSynthesizedAudioDataUrl(freq, beats = 4) {
+    // Helper: generate distinct audio tracks with different rhythms and frequencies
+    function createSynthesizedAudioDataUrl(tempo, freq, style = 'bass', durationSec = 10) {
       const sampleRate = 22050;
-      const duration = beats * 0.8;
-      const numSamples = Math.floor(sampleRate * duration);
+      const numSamples = Math.floor(sampleRate * durationSec);
       const buffer = new ArrayBuffer(44 + numSamples * 2);
       const view = new DataView(buffer);
 
-      // WAV Header
       const writeString = (offset, str) => {
         for (let i = 0; i < str.length; i++) {
           view.setUint8(offset + i, str.charCodeAt(i));
@@ -231,18 +232,26 @@
       writeString(36, 'data');
       view.setUint32(40, numSamples * 2, true);
 
-      // Audio Samples (synthesized bass beat + synth tone)
+      const beatInterval = 60 / tempo;
       for (let i = 0; i < numSamples; i++) {
         const t = i / sampleRate;
-        const beatTime = t % 0.4;
-        // Kick punch envelope
-        const kickEnv = Math.exp(-beatTime * 18);
-        const kickPitch = 55 + 120 * kickEnv;
-        const kick = Math.sin(2 * Math.PI * kickPitch * beatTime) * kickEnv;
+        const beatPhase = (t % beatInterval) / beatInterval;
+        const kickEnv = Math.exp(-beatPhase * 16);
+        const kickPitch = (style === 'lead' ? 90 : 50) + 140 * kickEnv;
+        const kick = Math.sin(2 * Math.PI * kickPitch * beatPhase * beatInterval) * kickEnv;
 
-        // Bassline
-        const bass = Math.sin(2 * Math.PI * freq * t) * 0.35;
-        const sample = Math.max(-1, Math.min(1, kick * 0.7 + bass * 0.3));
+        let melodic = 0;
+        if (style === 'lead') {
+          // Arpeggiator
+          const noteIndex = Math.floor((t / (beatInterval / 2)) % 4);
+          const noteFreq = freq * [1, 1.25, 1.5, 1.875][noteIndex];
+          melodic = Math.sin(2 * Math.PI * noteFreq * t) * 0.35;
+        } else {
+          // Deep Bass Sweep
+          melodic = Math.sin(2 * Math.PI * freq * t) * 0.45;
+        }
+
+        const sample = Math.max(-1, Math.min(1, kick * 0.65 + melodic));
         view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
       }
 
@@ -250,9 +259,9 @@
       return URL.createObjectURL(blob);
     }
 
-    const synthTrack1 = createSynthesizedAudioDataUrl(82.4, 12);  // Low E
-    const synthTrack2 = createSynthesizedAudioDataUrl(110.0, 10); // Low A
-    const synthTrack3 = createSynthesizedAudioDataUrl(146.8, 14); // Low D
+    const synthTrack1 = createSynthesizedAudioDataUrl(128, 65.4, 'bass', 12);  // Horeg Sub 65Hz
+    const synthTrack2 = createSynthesizedAudioDataUrl(150, 220.0, 'lead', 10); // Club Lead 220Hz
+    const synthTrack3 = createSynthesizedAudioDataUrl(115, 43.6, 'bass', 14);  // Earthquake Sub 43Hz
 
     const logEl = document.getElementById('event-log');
     function log(msg) {
@@ -332,8 +341,26 @@
     document.getElementById('api-play').addEventListener('click', () => player.play());
     document.getElementById('api-pause').addEventListener('click', () => player.pause());
     document.getElementById('api-toggle').addEventListener('click', () => player.toggle());
-    document.getElementById('api-prev').addEventListener('click', () => player.prev());
-    document.getElementById('api-next').addEventListener('click', () => player.next());
+    document.getElementById('api-prev').addEventListener('click', () => {
+      player.prev();
+      log('⏮ prev track');
+    });
+    document.getElementById('api-next').addEventListener('click', () => {
+      player.next();
+      log('⏭ next track');
+    });
+    document.getElementById('api-track-1').addEventListener('click', () => {
+      player.loadTrack(0, true);
+      log('🔀 loadTrack(0) -> Track 1');
+    });
+    document.getElementById('api-track-2').addEventListener('click', () => {
+      player.loadTrack(1, true);
+      log('🔀 loadTrack(1) -> Track 2');
+    });
+    document.getElementById('api-track-3').addEventListener('click', () => {
+      player.loadTrack(2, true);
+      log('🔀 loadTrack(2) -> Track 3');
+    });
     document.getElementById('api-seek').addEventListener('click', () => {
       player.seek(5);
       log('⏩ seek to 5s');

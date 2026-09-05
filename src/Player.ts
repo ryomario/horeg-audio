@@ -60,8 +60,7 @@ export class HoregAudio {
         this.ui.updateLoopState(nextLoop);
       },
       onTrackSelect: (index) => {
-        this.loadTrack(index);
-        this.play();
+        this.loadTrack(index, true);
       }
     });
 
@@ -87,7 +86,9 @@ export class HoregAudio {
       },
       onTrackChange: (track, index) => {
         this.ui.updateTrackInfo(track);
-        this.ui.renderPlaylist(this.audioEngine.getPlaylist(), index);
+        const playlist = this.audioEngine ? this.audioEngine.getPlaylist() : (options.playlist || []);
+        this.ui.renderPlaylist(playlist, index);
+        this.ui.updateProgress(0, track.duration || 0);
         if (options.onTrackChange) options.onTrackChange(track, index);
       },
       onTimeUpdate: (currentTime, duration) => {
@@ -176,8 +177,8 @@ export class HoregAudio {
     this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted());
   }
 
-  public loadTrack(indexOrTrack: number | Track): void {
-    this.audioEngine.loadTrack(indexOrTrack, false);
+  public loadTrack(indexOrTrack: number | Track, autoPlay: boolean = false): void {
+    this.audioEngine.loadTrack(indexOrTrack, autoPlay);
   }
 
   public setTheme(themeConfig: Partial<HoregTheme>): void {

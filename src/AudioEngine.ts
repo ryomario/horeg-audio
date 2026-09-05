@@ -29,15 +29,13 @@ export class AudioEngine {
     this.loopMode = options.loop || 'all';
     this.shuffleMode = !!options.shuffle;
     this.volumeLevel = options.volume !== undefined ? clamp(options.volume, 0, 1) : 0.8;
-    this.callbacks = {
-      onPlay: options.onPlay || callbacks.onPlay,
-      onPause: options.onPause || callbacks.onPause,
-      onTrackChange: options.onTrackChange || callbacks.onTrackChange,
-      onTimeUpdate: options.onTimeUpdate || callbacks.onTimeUpdate,
-      onEnded: options.onEnded || callbacks.onEnded,
-      onError: options.onError || callbacks.onError,
-      onBufferUpdate: callbacks.onBufferUpdate,
-      onLoadingChange: callbacks.onLoadingChange
+    this.callbacks = callbacks || {
+      onPlay: options.onPlay,
+      onPause: options.onPause,
+      onTrackChange: options.onTrackChange,
+      onTimeUpdate: options.onTimeUpdate,
+      onEnded: options.onEnded,
+      onError: options.onError
     };
 
     this.audio.volume = this.volumeLevel;
@@ -177,7 +175,7 @@ export class AudioEngine {
   }
 
   public isPlaying(): boolean {
-    return !this.audio.paused && !this.audio.ended && this.audio.readyState > 2;
+    return !this.audio.paused && !this.audio.ended;
   }
 
   public isMuted(): boolean {
@@ -215,7 +213,6 @@ export class AudioEngine {
     if (!track) return;
 
     this.audio.src = track.src;
-    this.audio.load();
 
     if (this.callbacks.onTrackChange) {
       this.callbacks.onTrackChange(track, this.currentIndex);
@@ -303,8 +300,8 @@ export class AudioEngine {
   public prev(): void {
     if (this.playlist.length === 0) return;
 
-    // If more than 3 seconds in, restart track
-    if (this.audio.currentTime > 3) {
+    // If more than 2 seconds in, restart track
+    if (this.audio.currentTime > 2) {
       this.seek(0);
       return;
     }
