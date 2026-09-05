@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Horeg Audio • Live Sandbox Demo</title>
+  <style>
+    :root {
+      --bg: #090a0f;
+      --card: #12131a;
+      --border: #232530;
+      --text: #f4f4f5;
+      --muted: #71717a;
+      --amber: #f59e0b;
+      --cyan: #06b6d4;
+      --pink: #ec4899;
+    }
+
+    /* Global page styling to verify zero CSS leakage into Shadow DOM */
+    body {
+      margin: 0;
+      padding: 30px 16px 60px 16px;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Intentionally broad global button rule to prove Shadow DOM isolation */
+    button {
+      border: 3px dashed #ff0055;
+      background: yellow;
+      color: black;
+      font-weight: bold;
+    }
+
+    .demo-container {
+      max-width: 640px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .demo-header {
+      text-align: center;
+    }
+
+    .demo-title {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .demo-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .sandbox-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .theme-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .theme-btn {
+      all: unset;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #181922;
+      color: var(--text);
+      transition: all 0.2s ease;
+    }
+
+    .theme-btn:hover {
+      border-color: var(--amber);
+      transform: translateY(-1px);
+    }
+
+    .theme-btn.active {
+      background: var(--amber);
+      color: #09090b;
+      border-color: var(--amber);
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+    }
+
+    .api-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+      justify-content: center;
+    }
+
+    .api-btn {
+      all: unset;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #1f212d;
+      color: #e4e4e7;
+      border: 1px solid #2d3142;
+    }
+
+    .api-btn:hover {
+      background: #2b2f42;
+      color: #fff;
+    }
+
+    .event-log {
+      margin-top: 16px;
+      background: #0d0e14;
+      border: 1px solid #1f212d;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      color: #10b981;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+
+    .isolation-note {
+      font-size: 11px;
+      color: #a1a1aa;
+      text-align: center;
+      line-height: 1.4;
+      padding: 8px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="demo-container">
+    <div class="demo-header">
+      <div class="demo-title">🔊 HOREG AUDIO RIG</div>
+      <div class="demo-subtitle">Standalone Vanilla TypeScript Audio Player • Shadow DOM Encapsulated</div>
+    </div>
+
+    <!-- Theme Switcher Toolbar -->
+    <div class="theme-toolbar">
+      <button class="theme-btn active" id="btn-classic">🔥 Horeg Classic</button>
+      <button class="theme-btn" id="btn-nightclub">⚡ Nightclub Neon</button>
+      <button class="theme-btn" id="btn-stealth">🛡️ Stealth Tactical</button>
+    </div>
+
+    <!-- Player Mount Point -->
+    <div id="player-mount"></div>
+
+    <!-- Interactive API Controls -->
+    <div class="sandbox-card">
+      <div style="font-size: 12px; font-weight: 700; color: #a1a1aa; margin-bottom: 8px; text-align: center;">
+        TEST PROGRAMMATIC API
+      </div>
+      <div class="api-controls">
+        <button class="api-btn" id="api-play">player.play()</button>
+        <button class="api-btn" id="api-pause">player.pause()</button>
+        <button class="api-btn" id="api-toggle">player.toggle()</button>
+        <button class="api-btn" id="api-prev">player.prev()</button>
+        <button class="api-btn" id="api-next">player.next()</button>
+        <button class="api-btn" id="api-seek">player.seek(15)</button>
+        <button class="api-btn" id="api-vol-up">Volume +10%</button>
+        <button class="api-btn" id="api-vol-down">Volume -10%</button>
+      </div>
+
+      <div class="event-log" id="event-log">
+        [Ready] HoregAudio instance initialized.
+      </div>
+    </div>
+
+    <div class="isolation-note">
+      🛡️ <strong>Zero CSS Bleed Proof:</strong> Tombol di luar pemutar sengaja diberi style aneh (kuning bergaris putus-putus merah), namun kontrol di dalam player tetap bergaya Sound Horeg murni karena isolasi ketat <code>Shadow DOM</code>.
+    </div>
+  </div>
+
+  <script type="module">
+    import { HoregAudio } from '../src/index.ts';
+
+    // Helper: generate a quick melodic/bass synthetic audio for offline testing
+    function createSynthesizedAudioDataUrl(freq, beats = 4) {
+      const sampleRate = 22050;
+      const duration = beats * 0.8;
+      const numSamples = Math.floor(sampleRate * duration);
+      const buffer = new ArrayBuffer(44 + numSamples * 2);
+      const view = new DataView(buffer);
+
+      // WAV Header
+      const writeString = (offset, str) => {
+        for (let i = 0; i < str.length; i++) {
+          view.setUint8(offset + i, str.charCodeAt(i));
+        }
+      };
+
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, 1, true); // Mono
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, numSamples * 2, true);
+
+      // Audio Samples (synthesized bass beat + synth tone)
+      for (let i = 0; i < numSamples; i++) {
+        const t = i / sampleRate;
+        const beatTime = t % 0.4;
+        // Kick punch envelope
+        const kickEnv = Math.exp(-beatTime * 18);
+        const kickPitch = 55 + 120 * kickEnv;
+        const kick = Math.sin(2 * Math.PI * kickPitch * beatTime) * kickEnv;
+
+        // Bassline
+        const bass = Math.sin(2 * Math.PI * freq * t) * 0.35;
+        const sample = Math.max(-1, Math.min(1, kick * 0.7 + bass * 0.3));
+        view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      }
+
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      return URL.createObjectURL(blob);
+    }
+
+    const synthTrack1 = createSynthesizedAudioDataUrl(82.4, 12);  // Low E
+    const synthTrack2 = createSynthesizedAudioDataUrl(110.0, 10); // Low A
+    const synthTrack3 = createSynthesizedAudioDataUrl(146.8, 14); // Low D
+
+    const logEl = document.getElementById('event-log');
+    function log(msg) {
+      const time = new Date().toLocaleTimeString();
+      logEl.innerHTML = `[${time}] ${msg}<br/>` + logEl.innerHTML;
+    }
+
+    // Initialize HoregAudio
+    const player = new HoregAudio({
+      container: '#player-mount',
+      playlist: [
+        {
+          id: 1,
+          title: 'Bass Horeg Jedag-Jedug Extreme',
+          artist: 'DJ Riswanda Karnaval',
+          album: 'Festival Sound Jawa Timur',
+          src: synthTrack1,
+          duration: 9.6
+        },
+        {
+          id: 2,
+          title: 'Karnaval Audio Rig Battle',
+          artist: 'Brewog Audio Master',
+          album: 'Horeg Party Live 2026',
+          src: synthTrack2,
+          duration: 8.0
+        },
+        {
+          id: 3,
+          title: 'Subwoofer Earthquake 18 Inch',
+          artist: 'Faskho Sengon Rig',
+          album: 'Mega Bass Volume 5',
+          src: synthTrack3,
+          duration: 11.2
+        }
+      ],
+      theme: {
+        variant: 'horeg-classic',
+        primaryGlowColor: '#f59e0b'
+      },
+      onPlay: (t) => log(`▶ Playing: "${t.title}"`),
+      onPause: () => log(`⏸ Paused`),
+      onTrackChange: (t, idx) => log(`🔄 Track #${idx + 1}: "${t.title}"`),
+      onEnded: (t) => log(`🏁 Ended: "${t.title}"`),
+      onError: (err) => log(`⚠️ Error: ${err.message || 'playback error'}`)
+    });
+
+    // Theme Switchers
+    const btnClassic = document.getElementById('btn-classic');
+    const btnNightclub = document.getElementById('btn-nightclub');
+    const btnStealth = document.getElementById('btn-stealth');
+
+    function setActiveBtn(active) {
+      [btnClassic, btnNightclub, btnStealth].forEach(b => b.classList.remove('active'));
+      active.classList.add('active');
+    }
+
+    btnClassic.addEventListener('click', () => {
+      setActiveBtn(btnClassic);
+      player.setTheme({ variant: 'horeg-classic', primaryGlowColor: '#f59e0b', accentColor: '#ef4444' });
+      log('🎨 Theme changed: horeg-classic');
+    });
+
+    btnNightclub.addEventListener('click', () => {
+      setActiveBtn(btnNightclub);
+      player.setTheme({ variant: 'horeg-nightclub', primaryGlowColor: '#06b6d4', accentColor: '#ec4899' });
+      log('🎨 Theme changed: horeg-nightclub');
+    });
+
+    btnStealth.addEventListener('click', () => {
+      setActiveBtn(btnStealth);
+      player.setTheme({ variant: 'horeg-stealth', primaryGlowColor: '#94a3b8', accentColor: '#e2e8f0' });
+      log('🎨 Theme changed: horeg-stealth');
+    });
+
+    // API Buttons
+    document.getElementById('api-play').addEventListener('click', () => player.play());
+    document.getElementById('api-pause').addEventListener('click', () => player.pause());
+    document.getElementById('api-toggle').addEventListener('click', () => player.toggle());
+    document.getElementById('api-prev').addEventListener('click', () => player.prev());
+    document.getElementById('api-next').addEventListener('click', () => player.next());
+    document.getElementById('api-seek').addEventListener('click', () => {
+      player.seek(5);
+      log('⏩ seek to 5s');
+    });
+
+    let currentVol = 0.8;
+    document.getElementById('api-vol-up').addEventListener('click', () => {
+      currentVol = Math.min(1, currentVol + 0.1);
+      player.setVolume(currentVol);
+      log(`🔊 Volume: ${Math.round(currentVol * 100)}%`);
+    });
+    document.getElementById('api-vol-down').addEventListener('click', () => {
+      currentVol = Math.max(0, currentVol - 0.1);
+      player.setVolume(currentVol);
+      log(`🔉 Volume: ${Math.round(currentVol * 100)}%`);
+    });
+  </script>
+</body>
+</html>
+
