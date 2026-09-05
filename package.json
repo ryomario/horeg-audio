@@ -1,6 +1,6 @@
 {
   "name": "horeg-audio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Standalone Vanilla TypeScript audio player library with encapsulated Shadow DOM and sound horeg aesthetics.",
   "type": "module",
   "main": "./dist/horeg-audio.cjs",
@@ -13,8 +13,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/horeg-audio.js",
       "require": "./dist/horeg-audio.cjs",
-      "default": "./dist/horeg-audio.global.js"
-    }
+      "default": "./dist/horeg-audio.js"
+    },
+    "./dist/*": "./dist/*"
   },
   "files": [
     "dist"
