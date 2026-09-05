@@ -129,6 +129,7 @@ interface HoregPlayerOptions {
   onPlay?: (track: Track) => void;
   onPause?: () => void;
   onTrackChange?: (track: Track, index: number) => void;
+  onPlaylistChange?: (playlist: Track[], currentIndex: number) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onEnded?: (track: Track) => void;
   onError?: (error: MediaError | Error) => void;
@@ -145,6 +146,13 @@ interface HoregPlayerOptions {
 - `player.seek(seconds: number): void` - Lompat ke detik tertentu.
 - `player.setVolume(level: number): void` - Mengatur volume (`0.0` sampai `1.0`).
 - `player.loadTrack(indexOrTrack: number | Track): void` - Memuat trek tertentu.
+- `player.addTrack(track: Track, autoPlay?: boolean): number` - Menambahkan lagu ke playlist.
+- `player.addTracks(tracks: Track[], autoPlay?: boolean): void` - Menambahkan kumpulan lagu ke playlist.
+- `player.addTrackFromFile(file: File, autoPlay?: boolean): Promise<Track>` - Menambahkan lagu dari file lokal komputer (otomatis ekstrak nama dan durasi).
+- `player.addTrackFromFiles(files: FileList | File[], autoPlay?: boolean): Promise<Track[]>` - Menambahkan banyak file audio lokal sekaligus.
+- `player.addTrackFromUrl(url: string, meta?: Partial<Track>, autoPlay?: boolean): Promise<Track>` - Menambahkan lagu dari URL online/streaming.
+- `player.removeTrack(index: number): void` - Menghapus lagu dari playlist berdasarkan indeks.
+- `player.getPlaylist(): Track[]` - Mengambil daftar lagu saat ini.
 - `player.setTheme(themeConfig: Partial<HoregTheme>): void` - Mengganti tema secara realtime.
 - `player.destroy(): void` - Membersihkan event listeners, audio stream, dan DOM Shadow Root.
 

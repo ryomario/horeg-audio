@@ -34,6 +34,7 @@ export interface HoregPlayerOptions {
   onPlay?: (track: Track) => void;
   onPause?: () => void;
   onTrackChange?: (track: Track, index: number) => void;
+  onPlaylistChange?: (playlist: Track[], currentIndex: number) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onEnded?: (track: Track) => void;
   onError?: (error: MediaError | Error) => void;

@@ -5,6 +5,7 @@ export interface AudioEngineCallbacks {
   onPlay?: (track: Track) => void;
   onPause?: () => void;
   onTrackChange?: (track: Track, index: number) => void;
+  onPlaylistChange?: (playlist: Track[], currentIndex: number) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onBufferUpdate?: (bufferedPercent: number) => void;
   onEnded?: (track: Track) => void;
@@ -33,6 +34,7 @@ export class AudioEngine {
       onPlay: options.onPlay,
       onPause: options.onPause,
       onTrackChange: options.onTrackChange,
+      onPlaylistChange: options.onPlaylistChange,
       onTimeUpdate: options.onTimeUpdate,
       onEnded: options.onEnded,
       onError: options.onError
@@ -159,6 +161,77 @@ export class AudioEngine {
     this.playlist = [...newPlaylist];
     this.currentIndex = clamp(startIndex, 0, Math.max(0, this.playlist.length - 1));
     this.loadTrack(this.currentIndex, false);
+    if (this.callbacks.onPlaylistChange) {
+      this.callbacks.onPlaylistChange([...this.playlist], this.currentIndex);
+    }
+    if (this.playlist.length > 0) {
+      this.loadTrack(this.currentIndex, false);
+    } else {
+      this.audio.pause();
+      this.audio.src = '';
+      if (this.callbacks.onTrackChange) {
+        this.callbacks.onTrackChange({ title: 'No Track Loaded', src: '' }, 0);
+      }
+    }
+  }
+
+  public addTrack(track: Track, autoPlay: boolean = false): number {
+    const wasEmpty = this.playlist.length === 0;
+    this.playlist.push(track);
+    const newIndex = this.playlist.length - 1;
+
+    if (this.callbacks.onPlaylistChange) {
+      this.callbacks.onPlaylistChange([...this.playlist], this.currentIndex);
+    }
+
+    if (wasEmpty) {
+      this.loadTrack(0, autoPlay);
+    } else if (autoPlay) {
+      this.loadTrack(newIndex, true);
+    }
+
+    return newIndex;
+  }
+
+  public addTracks(tracks: Track[], autoPlay: boolean = false): void {
+    if (!tracks || tracks.length === 0) return;
+    const wasEmpty = this.playlist.length === 0;
+    const firstAddedIndex = this.playlist.length;
+    this.playlist.push(...tracks);
+
+    if (this.callbacks.onPlaylistChange) {
+      this.callbacks.onPlaylistChange([...this.playlist], this.currentIndex);
+    }
+
+    if (wasEmpty) {
+      this.loadTrack(0, autoPlay);
+    } else if (autoPlay) {
+      this.loadTrack(firstAddedIndex, true);
+    }
+  }
+
+  public removeTrack(index: number): void {
+    if (index < 0 || index >= this.playlist.length) return;
+    const isCurrentTrack = index === this.currentIndex;
+    this.playlist.splice(index, 1);
+
+    if (this.playlist.length === 0) {
+      this.currentIndex = 0;
+      this.audio.pause();
+      this.audio.src = '';
+      if (this.callbacks.onTrackChange) {
+        this.callbacks.onTrackChange({ title: 'No Track Loaded', src: '' }, 0);
+      }
+    } else if (isCurrentTrack) {
+      const nextIndex = clamp(index, 0, this.playlist.length - 1);
+      this.loadTrack(nextIndex, false);
+    } else if (index < this.currentIndex) {
+      this.currentIndex--;
+    }
+
+    if (this.callbacks.onPlaylistChange) {
+      this.callbacks.onPlaylistChange([...this.playlist], this.currentIndex);
+    }
   }
 
   public getDuration(): number {

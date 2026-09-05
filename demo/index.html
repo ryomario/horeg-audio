@@ -190,6 +190,12 @@
         <button class="api-btn" id="api-seek">player.seek(5)</button>
         <button class="api-btn" id="api-vol-up">Vol +10%</button>
         <button class="api-btn" id="api-vol-down">Vol -10%</button>
+        <button class="api-btn" id="api-add-url" style="color: #f59e0b; border-color: rgba(245,158,11,0.5);">➕ Add URL Track</button>
+        <label class="api-btn" style="color: #06b6d4; border-color: rgba(6,182,212,0.5); cursor: pointer; display: inline-flex; align-items: center;">
+          📁 Add Local File
+          <input type="file" id="api-file-input" accept="audio/*" multiple style="display:none;" />
+        </label>
+        <button class="api-btn" id="api-remove-last" style="color: #ef4444; border-color: rgba(239,68,68,0.5);">🗑️ Remove Last</button>
       </div>
 
       <div class="event-log" id="event-log">
@@ -376,6 +382,41 @@
       currentVol = Math.max(0, currentVol - 0.1);
       player.setVolume(currentVol);
       log(`🔉 Volume: ${Math.round(currentVol * 100)}%`);
+    });
+
+    // Add URL track demo
+    let urlTrackCounter = 1;
+    document.getElementById('api-add-url').addEventListener('click', async () => {
+      const sampleUrl = createSynthesizedAudioDataUrl(135, 55 + urlTrackCounter * 15, 'lead', 8);
+      const track = await player.addTrackFromUrl(sampleUrl, {
+        title: `Online Stream Track #${urlTrackCounter}`,
+        artist: 'Horeg Web Station Live'
+      });
+      log(`➕ Added from URL: "${track.title}"`);
+      urlTrackCounter++;
+    });
+
+    // Add Local file demo
+    document.getElementById('api-file-input').addEventListener('change', async (e) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        const added = await player.addTrackFromFiles(files, true);
+        log(`📁 Added ${added.length} file(s) from local computer: "${added.map(t => t.title).join(', ')}"`);
+        e.target.value = '';
+      }
+    });
+
+    // Remove last track demo
+    document.getElementById('api-remove-last').addEventListener('click', () => {
+      const playlist = player.getPlaylist();
+      if (playlist.length > 0) {
+        const lastIdx = playlist.length - 1;
+        const removed = playlist[lastIdx];
+        player.removeTrack(lastIdx);
+        log(`🗑️ Removed track #${lastIdx + 1}: "${removed.title}"`);
+      } else {
+        log(`⚠️ Playlist is already empty.`);
+      }
     });
   </script>
 </body>

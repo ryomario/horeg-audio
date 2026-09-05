@@ -12,6 +12,9 @@ export interface UIEvents {
   onShuffleToggle: () => void;
   onLoopToggle: () => void;
   onTrackSelect: (index: number) => void;
+  onAddTrackFiles?: (files: File[]) => void;
+  onAddTrackUrl?: (url: string, title?: string, artist?: string) => void;
+  onRemoveTrack?: (index: number) => void;
 }
 
 export class UI {
@@ -40,6 +43,20 @@ export class UI {
 
   private volumeSlider: HTMLInputElement;
   private drawerEl: HTMLElement;
+  private drawerCountEl: HTMLElement;
+  private addTrackBtn: HTMLButtonElement;
+  private addPanelEl: HTMLElement;
+  private fileInputEl: HTMLInputElement;
+  private tabBtnFile: HTMLButtonElement;
+  private tabBtnUrl: HTMLButtonElement;
+  private tabPaneFile: HTMLElement;
+  private tabPaneUrl: HTMLElement;
+  private urlInput: HTMLInputElement;
+  private titleInput: HTMLInputElement;
+  private artistInput: HTMLInputElement;
+  private submitUrlBtn: HTMLButtonElement;
+  private cancelAddBtn: HTMLButtonElement;
+  private dropzoneEl: HTMLElement;
   private drawerInner: HTMLElement;
 
   private isScrubbing: boolean = false;
@@ -196,6 +213,94 @@ export class UI {
 
     // 5. Drawer panel
     this.drawerEl = createElement('div', { className: 'horeg-drawer' });
+
+    // Drawer Header with count & Add Track button
+    const drawerHeader = createElement('div', { className: 'horeg-drawer-header' });
+    const drawerHeading = createElement('div', { className: 'horeg-drawer-heading' });
+    drawerHeading.innerHTML = `<span>PLAYLIST</span>`;
+    this.drawerCountEl = createElement('span', { className: 'horeg-drawer-count', textContent: '0' });
+    drawerHeading.appendChild(this.drawerCountEl);
+    drawerHeader.appendChild(drawerHeading);
+
+    this.addTrackBtn = createElement('button', {
+      className: 'horeg-btn-add-track',
+      attributes: { type: 'button', 'aria-label': 'Add track to playlist' },
+      innerHTML: `${ICONS.plus} <span>Add Track</span>`
+    });
+    drawerHeader.appendChild(this.addTrackBtn);
+    this.drawerEl.appendChild(drawerHeader);
+
+    // Add Track Accordion Panel
+    this.addPanelEl = createElement('div', { className: 'horeg-add-panel' });
+
+    // Tabs
+    const tabs = createElement('div', { className: 'horeg-add-tabs' });
+    this.tabBtnFile = createElement('button', {
+      className: 'horeg-tab-btn active',
+      attributes: { type: 'button' },
+      innerHTML: `${ICONS.upload} <span>File Lokal</span>`
+    });
+    this.tabBtnUrl = createElement('button', {
+      className: 'horeg-tab-btn',
+      attributes: { type: 'button' },
+      innerHTML: `${ICONS.link} <span>Audio URL</span>`
+    });
+    tabs.appendChild(this.tabBtnFile);
+    tabs.appendChild(this.tabBtnUrl);
+    this.addPanelEl.appendChild(tabs);
+
+    // Tab 1: Local File Dropzone & Hidden Input
+    this.tabPaneFile = createElement('div', { className: 'horeg-tab-pane active' });
+    this.fileInputEl = createElement('input', {
+      attributes: { type: 'file', accept: 'audio/*', multiple: 'true', style: 'display: none;' }
+    });
+    this.dropzoneEl = createElement('div', { className: 'horeg-dropzone' });
+    this.dropzoneEl.innerHTML = `
+      <div class="horeg-dropzone-icon">${ICONS.upload}</div>
+      <div class="horeg-dropzone-text">Pilih File Audio Komputer</div>
+      <div class="horeg-dropzone-hint">Klik di sini atau drag & drop file (.mp3, .wav, .flac, .ogg, .m4a)</div>
+    `;
+    this.tabPaneFile.appendChild(this.fileInputEl);
+    this.tabPaneFile.appendChild(this.dropzoneEl);
+    this.addPanelEl.appendChild(this.tabPaneFile);
+
+    // Tab 2: URL Form
+    this.tabPaneUrl = createElement('div', { className: 'horeg-tab-pane' });
+    this.urlInput = createElement('input', {
+      className: 'horeg-input-field',
+      attributes: { type: 'url', placeholder: 'Audio URL (https://...mp3/wav)', required: 'true' }
+    });
+    this.titleInput = createElement('input', {
+      className: 'horeg-input-field',
+      attributes: { type: 'text', placeholder: 'Judul Lagu (Opsional)' }
+    });
+    this.artistInput = createElement('input', {
+      className: 'horeg-input-field',
+      attributes: { type: 'text', placeholder: 'Nama Artis (Opsional)' }
+    });
+    const formActions = createElement('div', { className: 'horeg-form-actions' });
+    this.cancelAddBtn = createElement('button', {
+      className: 'horeg-btn-cancel',
+      attributes: { type: 'button' },
+      textContent: 'Batal'
+    });
+    this.submitUrlBtn = createElement('button', {
+      className: 'horeg-btn-submit',
+      attributes: { type: 'button' },
+      innerHTML: `${ICONS.plus} Tambah`
+    });
+    formActions.appendChild(this.cancelAddBtn);
+    formActions.appendChild(this.submitUrlBtn);
+
+    this.tabPaneUrl.appendChild(this.urlInput);
+    this.tabPaneUrl.appendChild(this.titleInput);
+    this.tabPaneUrl.appendChild(this.artistInput);
+    this.tabPaneUrl.appendChild(formActions);
+    this.addPanelEl.appendChild(this.tabPaneUrl);
+
+    this.drawerEl.appendChild(this.addPanelEl);
+
+    // Track list container
     this.drawerInner = createElement('div', { className: 'horeg-drawer-inner' });
     this.drawerEl.appendChild(this.drawerInner);
     this.root.appendChild(this.drawerEl);
@@ -217,6 +322,127 @@ export class UI {
 
     this.drawerBtn.addEventListener('click', () => {
       this.toggleDrawer();
+    });
+
+    // Toggle Add Track Form
+    this.addTrackBtn.addEventListener('click', () => {
+      const isOpen = this.addPanelEl.classList.toggle('open');
+      this.addTrackBtn.classList.toggle('active', isOpen);
+      if (isOpen) {
+        this.toggleDrawer(true);
+      }
+    });
+
+    // Tab Switchers
+    this.tabBtnFile.addEventListener('click', () => {
+      this.tabBtnFile.classList.add('active');
+      this.tabBtnUrl.classList.remove('active');
+      this.tabPaneFile.classList.add('active');
+      this.tabPaneUrl.classList.remove('active');
+    });
+
+    this.tabBtnUrl.addEventListener('click', () => {
+      this.tabBtnUrl.classList.add('active');
+      this.tabBtnFile.classList.remove('active');
+      this.tabPaneUrl.classList.add('active');
+      this.tabPaneFile.classList.remove('active');
+      this.urlInput.focus();
+    });
+
+    // Local file picker
+    this.dropzoneEl.addEventListener('click', () => {
+      this.fileInputEl.click();
+    });
+
+    this.fileInputEl.addEventListener('change', () => {
+      if (this.fileInputEl.files && this.fileInputEl.files.length > 0) {
+        const files = Array.from(this.fileInputEl.files);
+        if (this.events.onAddTrackFiles) {
+          this.events.onAddTrackFiles(files);
+        }
+        this.fileInputEl.value = '';
+        this.closeAddPanel();
+      }
+    });
+
+    // Dropzone drag-and-drop feedback
+    this.dropzoneEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      this.dropzoneEl.classList.add('drag-active');
+    });
+
+    this.dropzoneEl.addEventListener('dragleave', () => {
+      this.dropzoneEl.classList.remove('drag-active');
+    });
+
+    this.dropzoneEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      this.dropzoneEl.classList.remove('drag-active');
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        const audioFiles = Array.from(e.dataTransfer.files).filter(
+          (f) => f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(f.name)
+        );
+        if (audioFiles.length > 0 && this.events.onAddTrackFiles) {
+          this.events.onAddTrackFiles(audioFiles);
+          this.closeAddPanel();
+        }
+      }
+    });
+
+    // Whole player Drag & Drop listener
+    this.root.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      this.root.classList.add('drag-over');
+    });
+
+    this.root.addEventListener('dragleave', (e) => {
+      if (!this.root.contains(e.relatedTarget as Node)) {
+        this.root.classList.remove('drag-over');
+      }
+    });
+
+    this.root.addEventListener('drop', (e) => {
+      e.preventDefault();
+      this.root.classList.remove('drag-over');
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        const audioFiles = Array.from(e.dataTransfer.files).filter(
+          (f) => f.type.startsWith('audio/') || /\.(mp3|wav|ogg|flac|m4a|aac)$/i.test(f.name)
+        );
+        if (audioFiles.length > 0 && this.events.onAddTrackFiles) {
+          this.events.onAddTrackFiles(audioFiles);
+          this.closeAddPanel();
+        }
+      }
+    });
+
+    // URL Form Submission
+    const handleUrlSubmit = () => {
+      const url = this.urlInput.value.trim();
+      if (!url) {
+        this.urlInput.focus();
+        return;
+      }
+      const title = this.titleInput.value.trim();
+      const artist = this.artistInput.value.trim();
+      if (this.events.onAddTrackUrl) {
+        this.events.onAddTrackUrl(url, title || undefined, artist || undefined);
+      }
+      this.urlInput.value = '';
+      this.titleInput.value = '';
+      this.artistInput.value = '';
+      this.closeAddPanel();
+    };
+
+    this.submitUrlBtn.addEventListener('click', handleUrlSubmit);
+    this.urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleUrlSubmit();
+      }
+    });
+
+    this.cancelAddBtn.addEventListener('click', () => {
+      this.closeAddPanel();
     });
 
     // Scrubbing on slider track
@@ -382,11 +608,27 @@ export class UI {
     } else {
       this.drawerEl.classList.remove('open');
       this.drawerBtn.classList.remove('active');
+      this.closeAddPanel();
     }
   }
 
+  public closeAddPanel(): void {
+    this.addPanelEl.classList.remove('open');
+    this.addTrackBtn.classList.remove('active');
+  }
+
   public renderPlaylist(playlist: Track[], currentIndex: number): void {
+    this.drawerCountEl.textContent = playlist.length.toString();
     this.drawerInner.innerHTML = '';
+
+    if (playlist.length === 0) {
+      const emptyEl = createElement('div', {
+        className: 'horeg-empty-playlist',
+        textContent: 'Playlist masih kosong. Klik "Add Track" untuk menambahkan lagu.'
+      });
+      this.drawerInner.appendChild(emptyEl);
+      return;
+    }
 
     playlist.forEach((track, idx) => {
       const item = createElement('div', {
@@ -419,6 +661,22 @@ export class UI {
         });
         item.appendChild(dur);
       }
+
+      // Remove / delete button
+      const actions = createElement('div', { className: 'horeg-track-actions' });
+      const removeBtn = createElement('button', {
+        className: 'horeg-btn-remove',
+        attributes: { type: 'button', 'aria-label': 'Hapus lagu dari playlist' },
+        innerHTML: ICONS.trash
+      });
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.events.onRemoveTrack) {
+          this.events.onRemoveTrack(idx);
+        }
+      });
+      actions.appendChild(removeBtn);
+      item.appendChild(actions);
 
       item.addEventListener('click', () => {
         this.events.onTrackSelect(idx);

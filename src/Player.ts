@@ -61,6 +61,15 @@ export class HoregAudio {
       },
       onTrackSelect: (index) => {
         this.loadTrack(index, true);
+      },
+      onAddTrackFiles: (files) => {
+        this.addTrackFromFiles(files, false);
+      },
+      onAddTrackUrl: (url, title, artist) => {
+        this.addTrackFromUrl(url, { title, artist }, false);
+      },
+      onRemoveTrack: (index) => {
+        this.removeTrack(index);
       }
     });
 
@@ -91,6 +100,10 @@ export class HoregAudio {
         this.ui.updateProgress(0, track.duration || 0);
         if (options.onTrackChange) options.onTrackChange(track, index);
       },
+      onPlaylistChange: (playlist, index) => {
+        this.ui.renderPlaylist(playlist, index);
+        if (options.onPlaylistChange) options.onPlaylistChange(playlist, index);
+      },
       onTimeUpdate: (currentTime, duration) => {
         this.ui.updateProgress(currentTime, duration);
         if (options.onTimeUpdate) options.onTimeUpdate(currentTime, duration);
@@ -113,6 +126,7 @@ export class HoregAudio {
     this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted());
     this.ui.updateLoopState(this.audioEngine.getLoop());
     this.ui.updateShuffleState(this.audioEngine.isShuffle());
+    this.ui.renderPlaylist(this.audioEngine.getPlaylist(), this.audioEngine.getCurrentIndex());
 
     const currentTrack = this.audioEngine.getCurrentTrack();
     if (currentTrack) {
@@ -179,6 +193,135 @@ export class HoregAudio {
 
   public loadTrack(indexOrTrack: number | Track, autoPlay: boolean = false): void {
     this.audioEngine.loadTrack(indexOrTrack, autoPlay);
+  }
+
+  public addTrack(track: Track, autoPlay: boolean = false): number {
+    const index = this.audioEngine.addTrack(track, autoPlay);
+    this.ui.renderPlaylist(this.audioEngine.getPlaylist(), this.audioEngine.getCurrentIndex());
+    return index;
+  }
+
+  public addTracks(tracks: Track[], autoPlay: boolean = false): void {
+    this.audioEngine.addTracks(tracks, autoPlay);
+    this.ui.renderPlaylist(this.audioEngine.getPlaylist(), this.audioEngine.getCurrentIndex());
+  }
+
+  public async addTrackFromFile(file: File, autoPlay: boolean = false): Promise<Track> {
+    const src = URL.createObjectURL(file);
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+    const track: Track = {
+      id: `local-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      title: nameWithoutExt,
+      artist: 'File Audio Lokal',
+      src
+    };
+
+    try {
+      const dur = await this.probeAudioDuration(src);
+      if (dur > 0) {
+        track.duration = dur;
+      }
+    } catch {
+      // AudioEngine will pick up duration on loadedmetadata
+    }
+
+    this.addTrack(track, autoPlay);
+    return track;
+  }
+
+  public async addTrackFromFiles(files: FileList | File[], autoPlay: boolean = false): Promise<Track[]> {
+    const fileArray = Array.from(files);
+    const addedTracks: Track[] = [];
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      const shouldAutoPlay = autoPlay && i === 0;
+      const track = await this.addTrackFromFile(file, shouldAutoPlay);
+      addedTracks.push(track);
+    }
+    return addedTracks;
+  }
+
+  public async addTrackFromUrl(url: string, meta: Partial<Track> = {}, autoPlay: boolean = false): Promise<Track> {
+    let fallbackTitle = 'Online Track';
+    try {
+      const parsed = new URL(url);
+      const pathname = parsed.pathname;
+      const lastPart = pathname.substring(pathname.lastIndexOf('/') + 1);
+      if (lastPart) {
+        fallbackTitle = decodeURIComponent(lastPart).replace(/\.[^/.]+$/, '');
+      }
+    } catch {
+      // In case of non-standard URL or data URI
+    }
+
+    const track: Track = {
+      id: meta.id || `url-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      title: meta.title?.trim() || fallbackTitle,
+      artist: meta.artist?.trim() || 'Audio Stream',
+      album: meta.album,
+      coverArt: meta.coverArt,
+      src: url,
+      duration: meta.duration
+    };
+
+    if (!track.duration) {
+      try {
+        const dur = await this.probeAudioDuration(url);
+        if (dur > 0) {
+          track.duration = dur;
+        }
+      } catch {
+        // Fallback to loadedmetadata
+      }
+    }
+
+    this.addTrack(track, autoPlay);
+    return track;
+  }
+
+  public removeTrack(index: number): void {
+    this.audioEngine.removeTrack(index);
+    this.ui.renderPlaylist(this.audioEngine.getPlaylist(), this.audioEngine.getCurrentIndex());
+    const current = this.audioEngine.getCurrentTrack();
+    if (current) {
+      this.ui.updateTrackInfo(current);
+    } else {
+      this.ui.updateTrackInfo({ title: 'No Track Loaded', src: '' });
+    }
+  }
+
+  public getPlaylist(): Track[] {
+    return this.audioEngine.getPlaylist();
+  }
+
+  private probeAudioDuration(src: string): Promise<number> {
+    return new Promise((resolve) => {
+      const tempAudio = new Audio();
+      let isResolved = false;
+
+      const finish = (dur: number) => {
+        if (!isResolved) {
+          isResolved = true;
+          tempAudio.removeEventListener('loadedmetadata', onLoaded);
+          tempAudio.removeEventListener('error', onError);
+          tempAudio.src = '';
+          resolve(dur);
+        }
+      };
+
+      const onLoaded = () => {
+        const d = tempAudio.duration;
+        finish(d && !isNaN(d) && isFinite(d) ? d : 0);
+      };
+
+      const onError = () => finish(0);
+
+      tempAudio.addEventListener('loadedmetadata', onLoaded);
+      tempAudio.addEventListener('error', onError);
+      tempAudio.src = src;
+
+      setTimeout(() => finish(0), 3000);
+    });
   }
 
   public setTheme(themeConfig: Partial<HoregTheme>): void {
