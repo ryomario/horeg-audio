@@ -2,6 +2,16 @@
   "name": "horeg-audio",
   "version": "1.0.2",
   "description": "Standalone Vanilla TypeScript audio player library with encapsulated Shadow DOM and sound horeg aesthetics.",
+  "author": "Mario <ardamomo3@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ryomario/horeg-audio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ryomario/horeg-audio/issues"
+  },
+  "homepage": "https://github.com/ryomario/horeg-audio#readme",
   "type": "module",
   "main": "./dist/horeg-audio.cjs",
   "module": "./dist/horeg-audio.js",

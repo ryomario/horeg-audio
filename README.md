@@ -320,5 +320,7 @@ pnpm run build
 
 ## 📄 Lisensi
 
-MIT License © 2026.
+Didistribusikan di bawah Lisensi MIT. Lihat berkas [`LICENSE`](LICENSE) untuk informasi lebih lanjut.
+
+Copyright © 2026 Mario ([@ryomario](https://github.com/ryomario)).
 
