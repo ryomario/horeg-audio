@@ -91,21 +91,30 @@ const player = new HoregAudio({
 
 ---
 
-## 🎨 Tema Preset (Sound Horeg Edition)
+## 🎨 Tema Preset (Dark & Light Edition)
 
-| Preset Variant | Deskripsi | Warna Utama |
-|---|---|---|
-| `horeg-classic` | Hitam matte khas box speaker + aksen amber neon karnaval | `#f59e0b` |
-| `horeg-nightclub` | Cyberpunk night vibe dengan aksen neon cyan & strobe magenta | `#06b6d4` & `#ec4899` |
-| `horeg-stealth` | Monokrom taktis metalik dan aksen perak | `#94a3b8` |
+| Preset Variant | Mode | Deskripsi | Warna Utama / Aksen |
+|---|---|---|---|
+| `horeg-classic` | Dark | Hitam matte khas box speaker + aksen amber neon karnaval | `#f59e0b` & `#ef4444` |
+| `horeg-nightclub` | Dark | Cyberpunk night vibe dengan aksen neon cyan & strobe magenta | `#06b6d4` & `#ec4899` |
+| `horeg-stealth` | Dark | Monokrom taktis metalik dan aksen perak | `#94a3b8` & `#e2e8f0` |
+| `horeg-light` | Light | Horeg Daylight Rig putih bersih dengan aksen amber & red punch | `#d97706` & `#dc2626` |
+| `horeg-light-clean` | Light | Studio white modern dengan aksen neon sky blue & pink | `#0284c7` & `#db2777` |
+| `horeg-light-minimal` | Light | Minimalist industrial slate dengan aksen royal cobalt | `#475569` & `#2563eb` |
 
 Contoh kustomisasi tema dinamis:
 
 ```typescript
+// Mengganti ke tema light mode
 player.setTheme({
-  variant: 'horeg-nightclub',
-  primaryGlowColor: '#06b6d4',
-  accentColor: '#ec4899',
+  variant: 'horeg-light'
+});
+
+// Kustomisasi penuh tema light mode
+player.setTheme({
+  variant: 'horeg-light-clean',
+  primaryGlowColor: '#0284c7',
+  accentColor: '#db2777',
   borderRadius: '16px'
 });
 ```

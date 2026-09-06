@@ -8,7 +8,13 @@ export interface Track {
   duration?: number;
 }
 
-export type ThemeVariant = 'horeg-classic' | 'horeg-nightclub' | 'horeg-stealth';
+export type ThemeVariant =
+  | 'horeg-classic'
+  | 'horeg-nightclub'
+  | 'horeg-stealth'
+  | 'horeg-light'
+  | 'horeg-light-clean'
+  | 'horeg-light-minimal';
 export type LoopMode = 'none' | 'all' | 'one';
 
 export interface HoregTheme {
@@ -16,10 +22,15 @@ export interface HoregTheme {
   primaryGlowColor?: string;     // Default: #f59e0b (Amber Horeg)
   accentColor?: string;          // Default: #ef4444 (Red Alert)
   cardBackground?: string;       // Default: #121214 (Speaker Cabinet)
-  textColor?: string;            // Default: #f4f4f5
+  surfaceColor?: string;         // Drawer, forms, and container surfaces
+  surfaceHoverColor?: string;    // Hover states for playlist items and buttons
+  borderColor?: string;          // Outer borders and divider lines
+  textColor?: string;            // Default: #f4f4f5 (Main typography)
+  mutedTextColor?: string;       // Subtitles, metadata, and placeholder text
   sliderProgressColor?: string;  // Default: #f59e0b
   enableEqAnimation?: boolean;   // Default: true
   borderRadius?: string;         // Default: 12px
+  isLight?: boolean;             // Explicitly declare light mode styling
 }
 
 export interface HoregPlayerOptions {

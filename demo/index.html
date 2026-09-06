@@ -168,6 +168,9 @@
       <button class="theme-btn active" id="btn-classic">🔥 Horeg Classic</button>
       <button class="theme-btn" id="btn-nightclub">⚡ Nightclub Neon</button>
       <button class="theme-btn" id="btn-stealth">🛡️ Stealth Tactical</button>
+      <button class="theme-btn" id="btn-light">☀️ Horeg Light</button>
+      <button class="theme-btn" id="btn-light-clean">❄️ Light Studio</button>
+      <button class="theme-btn" id="btn-light-minimal">📄 Light Minimal</button>
     </div>
 
     <!-- Player Mount Point -->
@@ -319,28 +322,51 @@
     const btnClassic = document.getElementById('btn-classic');
     const btnNightclub = document.getElementById('btn-nightclub');
     const btnStealth = document.getElementById('btn-stealth');
+    const btnLight = document.getElementById('btn-light');
+    const btnLightClean = document.getElementById('btn-light-clean');
+    const btnLightMinimal = document.getElementById('btn-light-minimal');
+
+    const allThemeBtns = [btnClassic, btnNightclub, btnStealth, btnLight, btnLightClean, btnLightMinimal];
 
     function setActiveBtn(active) {
-      [btnClassic, btnNightclub, btnStealth].forEach(b => b.classList.remove('active'));
+      allThemeBtns.forEach(b => b.classList.remove('active'));
       active.classList.add('active');
     }
 
     btnClassic.addEventListener('click', () => {
       setActiveBtn(btnClassic);
-      player.setTheme({ variant: 'horeg-classic', primaryGlowColor: '#f59e0b', accentColor: '#ef4444' });
+      player.setTheme({ variant: 'horeg-classic' });
       log('🎨 Theme changed: horeg-classic');
     });
 
     btnNightclub.addEventListener('click', () => {
       setActiveBtn(btnNightclub);
-      player.setTheme({ variant: 'horeg-nightclub', primaryGlowColor: '#06b6d4', accentColor: '#ec4899' });
+      player.setTheme({ variant: 'horeg-nightclub' });
       log('🎨 Theme changed: horeg-nightclub');
     });
 
     btnStealth.addEventListener('click', () => {
       setActiveBtn(btnStealth);
-      player.setTheme({ variant: 'horeg-stealth', primaryGlowColor: '#94a3b8', accentColor: '#e2e8f0' });
+      player.setTheme({ variant: 'horeg-stealth' });
       log('🎨 Theme changed: horeg-stealth');
+    });
+
+    btnLight.addEventListener('click', () => {
+      setActiveBtn(btnLight);
+      player.setTheme({ variant: 'horeg-light' });
+      log('🎨 Theme changed: horeg-light (Daylight Rig)');
+    });
+
+    btnLightClean.addEventListener('click', () => {
+      setActiveBtn(btnLightClean);
+      player.setTheme({ variant: 'horeg-light-clean' });
+      log('🎨 Theme changed: horeg-light-clean (Studio Neon)');
+    });
+
+    btnLightMinimal.addEventListener('click', () => {
+      setActiveBtn(btnLightMinimal);
+      player.setTheme({ variant: 'horeg-light-minimal' });
+      log('🎨 Theme changed: horeg-light-minimal (Slate Minimal)');
     });
 
     // API Buttons

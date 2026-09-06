@@ -1,29 +1,112 @@
 import { HoregTheme, ThemeVariant } from './types';
 
+function hexToRgb(hex: string): string {
+  const clean = hex.replace('#', '');
+  if (clean.length === 3) {
+    const r = parseInt(clean[0] + clean[0], 16);
+    const g = parseInt(clean[1] + clean[1], 16);
+    const b = parseInt(clean[2] + clean[2], 16);
+    return `${r}, ${g}, ${b}`;
+  }
+  if (clean.length === 6) {
+    const r = parseInt(clean.substring(0, 2), 16);
+    const g = parseInt(clean.substring(2, 4), 16);
+    const b = parseInt(clean.substring(4, 6), 16);
+    return `${r}, ${g}, ${b}`;
+  }
+  return '245, 158, 11';
+}
+
+function isLightColor(color?: string): boolean {
+  if (!color) return false;
+  const clean = color.replace('#', '');
+  let r = 0, g = 0, b = 0;
+  if (clean.length === 3) {
+    r = parseInt(clean[0] + clean[0], 16);
+    g = parseInt(clean[1] + clean[1], 16);
+    b = parseInt(clean[2] + clean[2], 16);
+  } else if (clean.length === 6) {
+    r = parseInt(clean.substring(0, 2), 16);
+    g = parseInt(clean.substring(2, 4), 16);
+    b = parseInt(clean.substring(4, 6), 16);
+  } else {
+    return false;
+  }
+  return (r * 299 + g * 587 + b * 114) / 1000 > 155;
+}
+
 export const THEME_PRESETS: Record<ThemeVariant, Partial<HoregTheme>> = {
   'horeg-classic': {
+    variant: 'horeg-classic',
     primaryGlowColor: '#f59e0b',
     accentColor: '#ef4444',
     cardBackground: '#121214',
     textColor: '#f4f4f5',
     sliderProgressColor: '#f59e0b',
-    borderRadius: '14px'
+    borderRadius: '14px',
+    isLight: false
   },
   'horeg-nightclub': {
+    variant: 'horeg-nightclub',
     primaryGlowColor: '#06b6d4',
     accentColor: '#ec4899',
     cardBackground: '#0b0c10',
     textColor: '#f8fafc',
     sliderProgressColor: '#06b6d4',
-    borderRadius: '14px'
+    borderRadius: '14px',
+    isLight: false
   },
   'horeg-stealth': {
+    variant: 'horeg-stealth',
     primaryGlowColor: '#94a3b8',
     accentColor: '#e2e8f0',
     cardBackground: '#0f1115',
     textColor: '#e2e8f0',
     sliderProgressColor: '#94a3b8',
-    borderRadius: '8px'
+    borderRadius: '8px',
+    isLight: false
+  },
+  'horeg-light': {
+    variant: 'horeg-light',
+    primaryGlowColor: '#d97706',
+    accentColor: '#dc2626',
+    cardBackground: '#ffffff',
+    textColor: '#0f172a',
+    sliderProgressColor: '#d97706',
+    borderRadius: '14px',
+    surfaceColor: '#f8fafc',
+    surfaceHoverColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+    mutedTextColor: '#64748b',
+    isLight: true
+  },
+  'horeg-light-clean': {
+    variant: 'horeg-light-clean',
+    primaryGlowColor: '#0284c7',
+    accentColor: '#db2777',
+    cardBackground: '#ffffff',
+    textColor: '#0f172a',
+    sliderProgressColor: '#0284c7',
+    borderRadius: '14px',
+    surfaceColor: '#f8fafc',
+    surfaceHoverColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+    mutedTextColor: '#64748b',
+    isLight: true
+  },
+  'horeg-light-minimal': {
+    variant: 'horeg-light-minimal',
+    primaryGlowColor: '#475569',
+    accentColor: '#2563eb',
+    cardBackground: '#f8fafc',
+    textColor: '#1e293b',
+    sliderProgressColor: '#2563eb',
+    borderRadius: '8px',
+    surfaceColor: '#f1f5f9',
+    surfaceHoverColor: '#e2e8f0',
+    borderColor: '#e2e8f0',
+    mutedTextColor: '#64748b',
+    isLight: true
   }
 };
 
@@ -34,26 +117,77 @@ export function generateStyles(theme: HoregTheme = {}): string {
   const variant = theme.variant || 'horeg-classic';
   const preset = THEME_PRESETS[variant] || THEME_PRESETS['horeg-classic'];
 
-  const glow = theme.primaryGlowColor || preset.primaryGlowColor || '#f59e0b';
-  const accent = theme.accentColor || preset.accentColor || '#ef4444';
-  const bg = theme.cardBackground || preset.cardBackground || '#121214';
-  const text = theme.textColor || preset.textColor || '#f4f4f5';
+  const isLight =
+    theme.isLight ??
+    (preset.isLight ?? (variant.includes('light') || isLightColor(theme.cardBackground || preset.cardBackground)));
+
+  const glow = theme.primaryGlowColor || preset.primaryGlowColor || (isLight ? '#d97706' : '#f59e0b');
+  const accent = theme.accentColor || preset.accentColor || (isLight ? '#dc2626' : '#ef4444');
+  const bg = theme.cardBackground || preset.cardBackground || (isLight ? '#ffffff' : '#121214');
+  const text = theme.textColor || preset.textColor || (isLight ? '#0f172a' : '#f4f4f5');
   const progress = theme.sliderProgressColor || preset.sliderProgressColor || glow;
   const radius = theme.borderRadius || preset.borderRadius || '14px';
+
+  const surface = theme.surfaceColor || preset.surfaceColor || (isLight ? '#f8fafc' : '#18181b');
+  const surfaceHover = theme.surfaceHoverColor || preset.surfaceHoverColor || (isLight ? '#f1f5f9' : '#222226');
+  const border = theme.borderColor || preset.borderColor || (isLight ? '#e2e8f0' : '#27272a');
+  const textMuted = theme.mutedTextColor || preset.mutedTextColor || (isLight ? '#64748b' : '#a1a1aa');
+
+  // Specific element colors adapted for light vs dark mode
+  const drawerBg = isLight ? surface : '#141416';
+  const sliderBg = isLight ? '#e2e8f0' : '#27272a';
+  const bufferBg = isLight ? '#cbd5e1' : '#3f3f46';
+  const btnPlayBg = isLight ? '#ffffff' : '#1f1f23';
+  const btnPlayText = isLight ? '#ffffff' : '#09090b';
+  const boltBg = isLight ? '#94a3b8' : '#3f3f46';
+  const boltBorder = isLight ? '#cbd5e1' : '#18181b';
+  const grillColor = isLight ? '#cbd5e1' : '#2c2d33';
+  const grillOpacity = isLight ? '0.35' : '0.3';
+  const dropzoneBg = isLight ? '#f8fafc' : '#141416';
+  const inputBg = isLight ? '#ffffff' : '#121214';
+  const tabBtnBg = isLight ? '#f1f5f9' : '#202024';
+  const tabBtnActiveBg = isLight ? '#ffffff' : '#27272a';
+  const itemActiveBg = isLight
+    ? `linear-gradient(90deg, rgba(${hexToRgb(glow)}, 0.12) 0%, rgba(${hexToRgb(glow)}, 0.02) 100%)`
+    : 'linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%)';
+  const btnActiveBg = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.06)';
+  const boxShadow = isLight
+    ? '0 14px 36px -8px rgba(15, 23, 42, 0.12), 0 2px 10px -2px rgba(15, 23, 42, 0.06), 0 0 16px -4px var(--horeg-glow)'
+    : '0 16px 40px -10px rgba(0, 0, 0, 0.9), 0 0 20px -5px var(--horeg-glow)';
+  const focusBoxShadow = isLight
+    ? '0 18px 44px -8px rgba(15, 23, 42, 0.18), 0 0 24px -2px var(--horeg-glow)'
+    : '0 20px 48px -10px rgba(0, 0, 0, 0.95), 0 0 30px -2px var(--horeg-glow), 0 0 10px var(--horeg-glow)';
 
   return `
     :host {
       --horeg-bg: ${bg};
-      --horeg-surface: #18181b;
-      --horeg-surface-hover: #222226;
-      --horeg-border: #27272a;
+      --horeg-surface: ${surface};
+      --horeg-surface-hover: ${surfaceHover};
+      --horeg-border: ${border};
       --horeg-glow: ${glow};
-      --horeg-glow-rgb: 245, 158, 11;
+      --horeg-glow-rgb: ${hexToRgb(glow)};
       --horeg-accent: ${accent};
       --horeg-progress: ${progress};
       --horeg-text-main: ${text};
-      --horeg-text-muted: #a1a1aa;
+      --horeg-text-muted: ${textMuted};
       --horeg-radius: ${radius};
+      --horeg-drawer-bg: ${drawerBg};
+      --horeg-slider-bg: ${sliderBg};
+      --horeg-slider-buffer: ${bufferBg};
+      --horeg-btn-play-bg: ${btnPlayBg};
+      --horeg-btn-play-text: ${btnPlayText};
+      --horeg-bolt-bg: ${boltBg};
+      --horeg-bolt-border: ${boltBorder};
+      --horeg-grill-color: ${grillColor};
+      --horeg-grill-opacity: ${grillOpacity};
+      --horeg-dropzone-bg: ${dropzoneBg};
+      --horeg-input-bg: ${inputBg};
+      --horeg-tab-bg: ${tabBtnBg};
+      --horeg-tab-active-bg: ${tabBtnActiveBg};
+      --horeg-item-active-bg: ${itemActiveBg};
+      --horeg-btn-active-bg: ${btnActiveBg};
+      --horeg-box-shadow: ${boxShadow};
+      --horeg-focus-shadow: ${focusBoxShadow};
       display: block;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       box-sizing: border-box;
@@ -72,7 +206,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-bg);
       border: 2px solid var(--horeg-border);
       border-radius: var(--horeg-radius);
-      box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.9), 0 0 20px -5px var(--horeg-glow);
+      box-shadow: var(--horeg-box-shadow);
       color: var(--horeg-text-main);
       position: relative;
       overflow: hidden;
@@ -87,7 +221,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
     :host(:focus-within) .horeg-player-box,
     .horeg-player-box:focus-within {
       border-color: var(--horeg-glow);
-      box-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.95), 0 0 30px -2px var(--horeg-glow), 0 0 10px var(--horeg-glow);
+      box-shadow: var(--horeg-focus-shadow);
     }
 
     :host(:focus) .horeg-player-box .horeg-bolt,
@@ -99,9 +233,9 @@ export function generateStyles(theme: HoregTheme = {}): string {
     .horeg-speaker-grill {
       position: absolute;
       inset: 0;
-      background-image: radial-gradient(#2c2d33 1.2px, transparent 1.2px);
+      background-image: radial-gradient(var(--horeg-grill-color) 1.2px, transparent 1.2px);
       background-size: 8px 8px;
-      opacity: 0.3;
+      opacity: var(--horeg-grill-opacity);
       pointer-events: none;
       z-index: 1;
     }
@@ -111,10 +245,10 @@ export function generateStyles(theme: HoregTheme = {}): string {
       position: absolute;
       width: 8px;
       height: 8px;
-      background: #3f3f46;
-      border: 1px solid #18181b;
+      background: var(--horeg-bolt-bg);
+      border: 1px solid var(--horeg-bolt-border);
       border-radius: 50%;
-      box-shadow: inset 0 1px 1px rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.8);
+      box-shadow: inset 0 1px 1px rgba(255,255,255,0.3), 0 1px 2px rgba(0,0,0,0.3);
       z-index: 2;
     }
     .horeg-bolt::after {
@@ -124,7 +258,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       left: 50%;
       width: 4px;
       height: 1px;
-      background: #18181b;
+      background: var(--horeg-bolt-border);
       transform: translate(-50%, -50%) rotate(45deg);
     }
     .horeg-bolt.top-left { top: 7px; left: 7px; }
@@ -146,7 +280,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid #27272a;
+      border-bottom: 1px solid var(--horeg-border);
       padding-bottom: 8px;
     }
 
@@ -190,12 +324,12 @@ export function generateStyles(theme: HoregTheme = {}): string {
       min-width: 64px;
       border-radius: 8px;
       overflow: hidden;
-      background: #18181b;
-      border: 1px solid #3f3f46;
+      background: var(--horeg-surface);
+      border: 1px solid var(--horeg-border);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: inset 0 0 10px rgba(0,0,0,0.8), 0 2px 6px rgba(0,0,0,0.6);
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.08);
     }
 
     .horeg-cover-img {
@@ -238,7 +372,8 @@ export function generateStyles(theme: HoregTheme = {}): string {
 
     .horeg-track-album {
       font-size: 10px;
-      color: #71717a;
+      color: var(--horeg-text-muted);
+      opacity: 0.85;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -281,12 +416,26 @@ export function generateStyles(theme: HoregTheme = {}): string {
       position: relative;
       width: 100%;
       height: 7px;
-      background: #27272a;
+      background: var(--horeg-slider-bg);
       border-radius: 4px;
-      cursor: pointer;
+      cursor: grab;
       overflow: hidden;
-      box-shadow: inset 0 1px 3px rgba(0,0,0,0.8);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
       touch-action: none;
+    }
+
+    .horeg-slider-track:hover {
+      cursor: grab;
+    }
+
+    .horeg-slider-track:active,
+    .horeg-slider-track.scrubbing {
+      cursor: grabbing;
+    }
+
+    .horeg-player-box.scrubbing,
+    .horeg-player-box.scrubbing * {
+      cursor: grabbing !important;
     }
 
     .horeg-buffer-bar {
@@ -295,7 +444,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       bottom: 0;
       left: 0;
       width: 0%;
-      background: #3f3f46;
+      background: var(--horeg-slider-buffer);
       border-radius: 4px;
       transition: width 0.2s linear;
     }
@@ -369,7 +518,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
 
     .horeg-btn.active {
       color: var(--horeg-glow);
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--horeg-btn-active-bg);
       text-shadow: 0 0 8px var(--horeg-glow);
       box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.05);
     }
@@ -379,7 +528,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: #1f1f23;
+      background: var(--horeg-btn-play-bg);
       border: 2px solid var(--horeg-glow);
       color: var(--horeg-glow);
       box-shadow: 0 0 12px -2px var(--horeg-glow);
@@ -387,7 +536,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
     }
 
     .horeg-btn-play:hover {
-      background: #27272a;
+      background: var(--horeg-surface-hover);
       transform: scale(1.06);
       box-shadow: 0 0 18px 2px var(--horeg-glow);
     }
@@ -398,7 +547,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
 
     .horeg-btn-play.playing {
       background: var(--horeg-glow);
-      color: #09090b;
+      color: var(--horeg-btn-play-text);
       box-shadow: 0 0 20px var(--horeg-glow), inset 0 0 8px rgba(255, 255, 255, 0.4);
       animation: playPulse 2.2s infinite ease-in-out;
     }
@@ -424,7 +573,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       appearance: none;
       width: 70px;
       height: 5px;
-      background: #27272a;
+      background: var(--horeg-slider-bg);
       border-radius: 3px;
       outline: none;
       cursor: grab;
@@ -441,7 +590,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       height: 12px;
       border-radius: 50%;
       background: var(--horeg-glow);
-      border: 1px solid #18181b;
+      border: 1px solid var(--horeg-border);
       box-shadow: 0 0 6px var(--horeg-glow);
       cursor: grab;
       transition: transform 0.1s ease;
@@ -460,7 +609,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       height: 12px;
       border-radius: 50%;
       background: var(--horeg-glow);
-      border: 1px solid #18181b;
+      border: 1px solid var(--horeg-border);
       box-shadow: 0 0 6px var(--horeg-glow);
       cursor: grab;
     }
@@ -481,17 +630,16 @@ export function generateStyles(theme: HoregTheme = {}): string {
       opacity: 0;
       overflow-y: auto;
       transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
-      background: #141416;
-      border-top: 1px solid #27272a;
+      background: var(--horeg-drawer-bg);
+      border-top: 1px solid var(--horeg-border);
       border-radius: 0 0 calc(var(--horeg-radius) - 2px) calc(var(--horeg-radius) - 2px);
       scrollbar-width: thin;
-      scrollbar-color: #3f3f46 #18181b;
+      scrollbar-color: var(--horeg-border) var(--horeg-drawer-bg);
       position: relative;
       z-index: 3;
     }
 
     .horeg-drawer.open {
-      max-height: 220px;
       max-height: 380px;
       opacity: 1;
     }
@@ -502,10 +650,10 @@ export function generateStyles(theme: HoregTheme = {}): string {
       align-items: center;
       justify-content: space-between;
       padding: 10px 14px 8px 14px;
-      border-bottom: 1px solid #27272a;
+      border-bottom: 1px solid var(--horeg-border);
       position: sticky;
       top: 0;
-      background: #141416;
+      background: var(--horeg-drawer-bg);
       z-index: 2;
     }
 
@@ -523,7 +671,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
 
     .horeg-drawer-count {
       padding: 1px 6px;
-      background: #27272a;
+      background: var(--horeg-surface-hover);
       color: var(--horeg-glow);
       border-radius: 10px;
       font-size: 10px;
@@ -538,22 +686,22 @@ export function generateStyles(theme: HoregTheme = {}): string {
       font-size: 11px;
       font-weight: 600;
       color: var(--horeg-text-main);
-      background: #1f1f23;
-      border: 1px solid #3f3f46;
+      background: var(--horeg-surface);
+      border: 1px solid var(--horeg-border);
       border-radius: 5px;
       cursor: pointer;
       transition: all 0.15s ease;
     }
 
     .horeg-btn-add-track:hover {
-      background: #27272a;
+      background: var(--horeg-surface-hover);
       border-color: var(--horeg-glow);
       color: var(--horeg-glow);
-      box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+      box-shadow: 0 0 8px rgba(var(--horeg-glow-rgb), 0.25);
     }
 
     .horeg-btn-add-track.active {
-      background: #27272a;
+      background: var(--horeg-surface-hover);
       border-color: var(--horeg-glow);
       color: var(--horeg-glow);
       box-shadow: 0 0 12px var(--horeg-glow);
@@ -571,10 +719,10 @@ export function generateStyles(theme: HoregTheme = {}): string {
       gap: 10px;
       margin: 10px 12px;
       padding: 12px;
-      background: #18181b;
-      border: 1px solid #3f3f46;
+      background: var(--horeg-surface);
+      border: 1px solid var(--horeg-border);
       border-radius: 8px;
-      box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.6);
+      box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.08);
       animation: fadeIn 0.2s ease;
     }
 
@@ -585,7 +733,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
     .horeg-add-tabs {
       display: flex;
       gap: 6px;
-      border-bottom: 1px solid #27272a;
+      border-bottom: 1px solid var(--horeg-border);
       padding-bottom: 8px;
     }
 
@@ -598,9 +746,9 @@ export function generateStyles(theme: HoregTheme = {}): string {
       padding: 6px 10px;
       font-size: 11px;
       font-weight: 600;
-      background: #202024;
+      background: var(--horeg-tab-bg);
       color: var(--horeg-text-muted);
-      border: 1px solid #2e2e33;
+      border: 1px solid var(--horeg-border);
       border-radius: 5px;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -608,11 +756,12 @@ export function generateStyles(theme: HoregTheme = {}): string {
 
     .horeg-tab-btn:hover {
       color: var(--horeg-text-main);
-      border-color: #52525b;
+      background: var(--horeg-surface-hover);
+      border-color: var(--horeg-border);
     }
 
     .horeg-tab-btn.active {
-      background: #27272a;
+      background: var(--horeg-tab-active-bg);
       color: var(--horeg-glow);
       border-color: var(--horeg-glow);
       box-shadow: 0 0 10px var(--horeg-glow);
@@ -641,9 +790,9 @@ export function generateStyles(theme: HoregTheme = {}): string {
       justify-content: center;
       gap: 6px;
       padding: 16px 10px;
-      border: 2px dashed #3f3f46;
+      border: 2px dashed var(--horeg-border);
       border-radius: 6px;
-      background: #141416;
+      background: var(--horeg-dropzone-bg);
       cursor: pointer;
       transition: all 0.2s ease;
       text-align: center;
@@ -652,8 +801,8 @@ export function generateStyles(theme: HoregTheme = {}): string {
     .horeg-dropzone:hover,
     .horeg-dropzone.drag-active {
       border-color: var(--horeg-glow);
-      background: rgba(245, 158, 11, 0.05);
-      box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
+      background: rgba(var(--horeg-glow-rgb), 0.08);
+      box-shadow: 0 0 10px rgba(var(--horeg-glow-rgb), 0.15);
     }
 
     .horeg-dropzone-icon {
@@ -680,8 +829,8 @@ export function generateStyles(theme: HoregTheme = {}): string {
       box-sizing: border-box;
       padding: 7px 10px;
       font-size: 12px;
-      background: #121214;
-      border: 1px solid #3f3f46;
+      background: var(--horeg-input-bg);
+      border: 1px solid var(--horeg-border);
       border-radius: 5px;
       color: var(--horeg-text-main);
       outline: none;
@@ -690,13 +839,13 @@ export function generateStyles(theme: HoregTheme = {}): string {
 
     .horeg-input-field:focus {
       border-color: var(--horeg-glow);
-      background: #18181b;
+      background: var(--horeg-surface);
       box-shadow: 0 0 0 1px var(--horeg-glow), 0 0 10px var(--horeg-glow);
       outline: none;
     }
 
     .horeg-input-field::placeholder {
-      color: #71717a;
+      color: var(--horeg-text-muted);
       font-size: 11px;
     }
 
@@ -716,7 +865,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       font-size: 11px;
       font-weight: 700;
       background: var(--horeg-glow);
-      color: #09090b;
+      color: var(--horeg-btn-play-text);
       border: none;
       border-radius: 5px;
       cursor: pointer;
@@ -772,14 +921,14 @@ export function generateStyles(theme: HoregTheme = {}): string {
     }
 
     .horeg-track-item:hover {
-      background: #1f1f23;
+      background: var(--horeg-surface-hover);
     }
 
     .horeg-track-item.active {
-      background: linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+      background: var(--horeg-item-active-bg);
       color: var(--horeg-glow);
       border-left: 3px solid var(--horeg-glow);
-      box-shadow: inset 3px 0 6px -2px var(--horeg-glow), 0 2px 8px rgba(0, 0, 0, 0.4);
+      box-shadow: inset 3px 0 6px -2px var(--horeg-glow), 0 2px 8px rgba(0, 0, 0, 0.15);
       position: relative;
     }
 

@@ -1,5 +1,5 @@
 import { HoregPlayerOptions, HoregTheme, Track, LoopMode } from './types';
-import { generateStyles } from './styles';
+import { generateStyles, THEME_PRESETS } from './styles';
 import { AudioEngine } from './AudioEngine';
 import { UI } from './UI';
 import { Visualizer } from './visualizer';
@@ -27,7 +27,12 @@ export class HoregAudio {
       throw new Error('[HoregAudio] Invalid container option provided.');
     }
 
-    this.theme = options.theme || { variant: 'horeg-classic' };
+    const initialVariant = options.theme?.variant || 'horeg-classic';
+    const initialPreset = THEME_PRESETS[initialVariant] || THEME_PRESETS['horeg-classic'];
+    this.theme = {
+      ...initialPreset,
+      ...(options.theme || {})
+    };
 
     // 1. Shadow DOM attachment
     this.shadow = this.container.attachShadow({ mode: 'open' });
@@ -343,11 +348,26 @@ export class HoregAudio {
   }
 
   public setTheme(themeConfig: Partial<HoregTheme>): void {
-    this.theme = { ...this.theme, ...themeConfig };
+    if (themeConfig.variant) {
+      const preset = THEME_PRESETS[themeConfig.variant] || THEME_PRESETS['horeg-classic'];
+      this.theme = {
+        ...preset,
+        ...themeConfig
+      };
+    } else {
+      this.theme = {
+        ...this.theme,
+        ...themeConfig
+      };
+    }
     this.styleEl.textContent = generateStyles(this.theme);
     if (this.theme.enableEqAnimation !== undefined) {
       this.visualizer.setEnabled(this.theme.enableEqAnimation);
     }
+  }
+
+  public getTheme(): HoregTheme {
+    return { ...this.theme };
   }
 
   public getAudioEngine(): AudioEngine {
