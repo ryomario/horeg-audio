@@ -473,6 +473,8 @@ export class UI {
   private startScrubbing = (e: MouseEvent | TouchEvent): void => {
     e.preventDefault();
     this.isScrubbing = true;
+    document.body.style.userSelect = 'none';
+
     this.handleScrubbingMove(e);
 
     const onMove = (moveEvent: MouseEvent | TouchEvent) => {
@@ -483,7 +485,6 @@ export class UI {
 
     const onUp = (upEvent: MouseEvent | TouchEvent) => {
       if (this.isScrubbing) {
-        this.isScrubbing = false;
         this.finishScrubbing(upEvent);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
@@ -500,7 +501,10 @@ export class UI {
 
   private calculateProgressPercent(e: MouseEvent | TouchEvent): number {
     const rect = this.sliderTrack.getBoundingClientRect();
-    const clientX = 'touches' in e ? (e.touches[0] || e.changedTouches[0]).clientX : e.clientX;
+    const clientX =
+      'touches' in e
+        ? ((e as TouchEvent).touches?.[0]?.clientX ?? (e as TouchEvent).changedTouches?.[0]?.clientX ?? 0)
+        : (e as MouseEvent).clientX;
     const offsetX = clamp(clientX - rect.left, 0, rect.width);
     return rect.width > 0 ? (offsetX / rect.width) * 100 : 0;
   }
@@ -508,6 +512,7 @@ export class UI {
   private handleScrubbingMove(e: MouseEvent | TouchEvent): void {
     const percent = this.calculateProgressPercent(e);
     this.fillBar.style.width = `${percent}%`;
+    this.sliderTrack.setAttribute('aria-valuenow', Math.round(percent).toString());
     if (this.currentDuration > 0) {
       const seekTime = (percent / 100) * this.currentDuration;
       this.currentTimeEl.textContent = formatTime(seekTime);
@@ -516,10 +521,15 @@ export class UI {
 
   private finishScrubbing(e: MouseEvent | TouchEvent): void {
     const percent = this.calculateProgressPercent(e);
+    this.fillBar.style.width = `${percent}%`;
+    this.sliderTrack.setAttribute('aria-valuenow', Math.round(percent).toString());
     if (this.currentDuration > 0) {
       const targetSeconds = (percent / 100) * this.currentDuration;
+      this.currentTimeEl.textContent = formatTime(targetSeconds);
       this.events.onSeek(targetSeconds);
     }
+    this.isScrubbing = false;
+    document.body.style.userSelect = '';
   }
 
   public updateTrackInfo(track: Track): void {

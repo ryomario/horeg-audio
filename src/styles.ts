@@ -286,6 +286,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       cursor: pointer;
       overflow: hidden;
       box-shadow: inset 0 1px 3px rgba(0,0,0,0.8);
+      touch-action: none;
     }
 
     .horeg-buffer-bar {
@@ -308,7 +309,12 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: linear-gradient(90deg, var(--horeg-accent) 0%, var(--horeg-progress) 100%);
       border-radius: 4px;
       box-shadow: 0 0 8px var(--horeg-glow);
-      transition: width 0.08s linear;
+    }
+
+    .horeg-slider-track.scrubbing .horeg-fill-bar,
+    .horeg-slider-track:active .horeg-fill-bar,
+    .horeg-player-box.scrubbing .horeg-fill-bar {
+      transition: none !important;
     }
 
     /* Controls Row */
@@ -421,7 +427,11 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: #27272a;
       border-radius: 3px;
       outline: none;
-      cursor: pointer;
+      cursor: grab;
+    }
+
+    .horeg-volume-slider:active {
+      cursor: grabbing;
     }
 
     .horeg-volume-slider::-webkit-slider-thumb {
@@ -433,12 +443,16 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-glow);
       border: 1px solid #18181b;
       box-shadow: 0 0 6px var(--horeg-glow);
-      cursor: pointer;
+      cursor: grab;
       transition: transform 0.1s ease;
     }
 
     .horeg-volume-slider::-webkit-slider-thumb:hover {
       transform: scale(1.2);
+    }
+
+    .horeg-volume-slider:active::-webkit-slider-thumb {
+      cursor: grabbing;
     }
 
     .horeg-volume-slider::-moz-range-thumb {
@@ -448,7 +462,11 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-glow);
       border: 1px solid #18181b;
       box-shadow: 0 0 6px var(--horeg-glow);
-      cursor: pointer;
+      cursor: grab;
+    }
+
+    .horeg-volume-slider:active::-moz-range-thumb {
+      cursor: grabbing;
     }
 
     /* Drag Over Highlight on main player */

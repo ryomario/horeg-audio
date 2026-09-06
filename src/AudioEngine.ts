@@ -58,6 +58,7 @@ export class AudioEngine {
     this.audio.addEventListener('waiting', this.handleWaiting);
     this.audio.addEventListener('playing', this.handlePlaying);
     this.audio.addEventListener('loadedmetadata', this.handleLoadedMetadata);
+    this.audio.addEventListener('seeked', this.handleSeeked);
   }
 
   private detachEvents(): void {
@@ -70,6 +71,7 @@ export class AudioEngine {
     this.audio.removeEventListener('waiting', this.handleWaiting);
     this.audio.removeEventListener('playing', this.handlePlaying);
     this.audio.removeEventListener('loadedmetadata', this.handleLoadedMetadata);
+    this.audio.removeEventListener('seeked', this.handleSeeked);
   }
 
   private handlePlay = (): void => {
@@ -86,6 +88,15 @@ export class AudioEngine {
   };
 
   private handleTimeUpdate = (): void => {
+    if (this.audio.seeking) return;
+    const current = this.audio.currentTime || 0;
+    const duration = this.getDuration();
+    if (this.callbacks.onTimeUpdate) {
+      this.callbacks.onTimeUpdate(current, duration);
+    }
+  };
+
+  private handleSeeked = (): void => {
     const current = this.audio.currentTime || 0;
     const duration = this.getDuration();
     if (this.callbacks.onTimeUpdate) {
