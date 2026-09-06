@@ -311,54 +311,429 @@ export function generateStyles(theme: HoregTheme = {}): string {
     }
 
     /* Track Display & Visualizer Section */
-    .horeg-track-row {
+    /* 3-Soundbox Stage Visualizer */
+    .horeg-soundbox-stage {
+      position: relative;
+      width: 100%;
+      box-sizing: border-box;
       display: flex;
       align-items: center;
-      gap: 14px;
+      justify-content: center;
+      gap: 12px;
+      padding: 14px 24px;
+      background: ${isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(0, 0, 0, 0.45)'};
+      border: 1px solid var(--horeg-border);
+      border-radius: 12px;
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.35);
+      overflow: visible;
     }
 
-    .horeg-cover-container {
+    /* Base Soundbox Cabinet */
+    .horeg-soundbox {
       position: relative;
-      width: 64px;
-      height: 64px;
-      min-width: 64px;
-      border-radius: 8px;
-      overflow: hidden;
       background: var(--horeg-surface);
+      border: 1px solid var(--horeg-border);
+      box-sizing: border-box;
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    /* Miniature Box Bolts */
+    .horeg-box-bolt {
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      background: ${boltBg};
+      border: 1px solid ${boltBorder};
+      border-radius: 50%;
+      z-index: 5;
+    }
+
+    .horeg-box-bolt.top-left { top: 4px; left: 4px; }
+    .horeg-box-bolt.top-right { top: 4px; right: 4px; }
+    .horeg-box-bolt.bottom-left { bottom: 4px; left: 4px; }
+    .horeg-box-bolt.bottom-right { bottom: 4px; right: 4px; }
+
+    /* Left & Right Satellite Speakers */
+    .horeg-soundbox.is-satellite {
+      width: 58px;
+      height: 106px;
+      border-radius: 6px;
+      padding: 6px 4px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      z-index: 2;
+      position: relative;
+    }
+
+    .horeg-soundbox.is-satellite.is-left {
+      margin-right: -6px;
+    }
+
+    .horeg-soundbox.is-satellite.is-right {
+      margin-left: -6px;
+    }
+
+    .horeg-box-header, .horeg-box-footer {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 10px;
+    }
+
+    .horeg-tweeter-slot {
+      width: 14px;
+      height: 3px;
+      background: var(--horeg-glow);
+      border-radius: 2px;
+      opacity: 0.75;
+      box-shadow: 0 0 4px var(--horeg-glow);
+    }
+
+    .horeg-port-slot {
+      width: 16px;
+      height: 3px;
+      background: #090a0d;
+      border: 1px solid var(--horeg-border);
+      border-radius: 2px;
+    }
+
+    .horeg-satellite-baffle {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex: 1;
+    }
+
+    .horeg-satellite-driver {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Water-like Ripple Rings around the 4 Satellite Circles */
+    .horeg-driver-ripple {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 38px;
+      height: 38px;
+      margin-top: -19px;
+      margin-left: -19px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(var(--horeg-glow-rgb), 0.5);
+      box-shadow: 0 0 12px rgba(var(--horeg-glow-rgb), 0.25), inset 0 0 8px rgba(var(--horeg-glow-rgb), 0.125);
+      opacity: 0;
+      pointer-events: none;
+      transform-origin: center center;
+      transition: transform 0.06s ease-out, opacity 0.06s ease-out;
+      z-index: 1;
+    }
+
+    .horeg-driver-ripple.ripple-2 {
+      border-width: 1px;
+    }
+
+    .horeg-driver-surround {
+      position: relative;
+      z-index: 2;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #0c0d12;
       border: 1px solid var(--horeg-border);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: inset 0 0 10px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.08);
+      box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.8);
+    }
+
+    .horeg-driver-cone {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #2a2b33 0%, #15161c 65%, #09090b 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+      transition: transform 0.05s ease-out;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .horeg-driver-cap {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--horeg-glow) 0%, #181920 80%);
+      opacity: 0.85;
+      box-shadow: 0 0 4px var(--horeg-glow);
+    }
+
+    /* Center Monster Subwoofer - Higher z-index in front of left and right */
+    .horeg-soundbox.is-subwoofer {
+      width: 126px;
+      height: 126px;
+      border-radius: 12px;
+      border: 1.5px solid var(--horeg-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      z-index: 10 !important;
+      position: relative;
+      transition: transform 0.04s ease-out, box-shadow 0.08s ease-out;
+    }
+
+    /* Concentric Bass Shockwaves */
+    .horeg-shockwaves-wrap {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    .horeg-shockwave {
+      position: absolute;
+      top: -50px;
+      left: -50px;
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      border: 2px solid var(--horeg-glow);
+      box-shadow: 0 0 16px var(--horeg-glow), inset 0 0 8px var(--horeg-glow);
+      opacity: 0;
+      transform-origin: center center;
+      pointer-events: none;
+      transition: transform 0.05s ease-out, opacity 0.08s ease-out;
+    }
+
+    .horeg-shockwave.wave-1 {
+      border-width: 2.5px;
+    }
+
+    .horeg-shockwave.wave-2 {
+      border-width: 1.5px;
+      border-style: dashed;
+    }
+
+    /* Subwoofer Frame Details */
+    .horeg-sub-frame {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .horeg-sub-badge {
+      position: absolute;
+      top: 2px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      color: var(--horeg-glow);
+      background: rgba(0, 0, 0, 0.2);
+      padding: 1px 6px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      text-shadow: 0 0 6px var(--horeg-glow);
+    }
+
+    .horeg-sub-ports {
+      position: absolute;
+      bottom: 6px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 12px;
+    }
+
+    .horeg-sub-port {
+      width: 10px;
+      height: 10px;
+      background: #08080a;
+      border-radius: 50%;
+      border: 1px solid var(--horeg-border);
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.9);
+    }
+
+    /* Subwoofer Baffle, Surround & Cone */
+    .horeg-sub-baffle {
+      position: relative;
+      z-index: 2;
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      background: #0a0b0e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1.5px solid var(--horeg-border);
+      box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.9);
+    }
+
+    .horeg-sub-surround {
+      width: 86px;
+      height: 86px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #1a1b22 60%, #0d0e13 100%);
+      border: 2px solid rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.7);
+    }
+
+    .horeg-sub-cone {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #2a2b34 0%, #15161d 65%, #0a0a0d 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+      transition: transform 0.05s ease-out;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Circular Cover Art inside Subwoofer */
+    .horeg-sub-cover-wrap {
+      position: relative;
+      width: 54px;
+      height: 54px;
+      min-width: 54px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: #0f1015;
+      border: 2px solid var(--horeg-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 12px var(--horeg-glow), inset 0 0 8px rgba(0, 0, 0, 0.6);
     }
 
     .horeg-cover-img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      display: block;
     }
 
     .horeg-cover-fallback {
       color: var(--horeg-glow);
-      opacity: 0.7;
+      opacity: 0.8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    .horeg-track-info {
-      flex: 1;
-      min-width: 0;
+    /* Centered Metadata & Title Marquee Section */
+    .horeg-track-meta {
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      margin: 4px 0 2px 0;
+      text-align: center;
+      width: 100%;
+    }
+
+    .horeg-title-wrap {
+      width: 100%;
+      max-width: 380px;
+      overflow: hidden;
+      position: relative;
+      margin: 0 auto;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .horeg-title-wrap.is-overflowing {
+      justify-content: flex-start;
+      -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+      mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+      animation: horegTitleMask var(--marquee-duration, 8s) ease-in-out infinite;
+    }
+
+    /* Mask Fading:
+       - 0% - 18%: Teks di ujung kiri (awal) -> fade kiri hilang (teks jelas), fade kanan aktif
+       - 26% - 70%: Teks berjalan -> fade kiri & kanan sama-sama aktif
+       - 78% - 86%: Teks di ujung kanan (akhir) -> fade kanan hilang (teks jelas), fade kiri aktif
+       - 92% - 100%: Teks reset ke awal -> fade kiri hilang kembali, fade kanan aktif
+    */
+    @keyframes horegTitleMask {
+      0%, 18% {
+        -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+        mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+      }
+      26%, 70% {
+        -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 24px, #000 calc(100% - 24px), transparent 100%);
+        mask-image: linear-gradient(to right, transparent 0%, #000 24px, #000 calc(100% - 24px), transparent 100%);
+      }
+      78%, 86% {
+        -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 24px, #000 100%);
+        mask-image: linear-gradient(to right, transparent 0%, #000 24px, #000 100%);
+      }
+      92%, 100% {
+        -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+        mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+      }
     }
 
     .horeg-track-title {
       font-size: 15px;
       font-weight: 700;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      display: inline-block;
       color: var(--horeg-text-main);
       letter-spacing: 0.2px;
+      text-align: center;
+      will-change: transform, opacity;
+    }
+
+    /* Marquee: Reset ke posisi awal (BUKAN rewind bolak-balik) */
+    .horeg-track-title.is-marquee {
+      animation: horegMarquee var(--marquee-duration, 8s) ease-in-out infinite;
+    }
+
+    @keyframes horegMarquee {
+      0%, 18% {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      76%, 86% {
+        transform: translateX(var(--marquee-dist, -40px));
+        opacity: 1;
+      }
+      90% {
+        transform: translateX(var(--marquee-dist, -40px));
+        opacity: 0;
+      }
+      93% {
+        transform: translateX(0);
+        opacity: 0;
+      }
+      100% {
+        transform: translateX(0);
+        opacity: 1;
+      }
     }
 
     .horeg-track-artist {
@@ -368,33 +743,19 @@ export function generateStyles(theme: HoregTheme = {}): string {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      max-width: 360px;
+      text-align: center;
     }
 
     .horeg-track-album {
       font-size: 10px;
       color: var(--horeg-text-muted);
-      opacity: 0.85;
+      opacity: 0.8;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-
-    /* Mini EQ Visualizer */
-    .horeg-eq-wrapper {
-      display: flex;
-      align-items: flex-end;
-      gap: 2px;
-      height: 24px;
-      padding: 0 4px;
-    }
-
-    .horeg-eq-bar {
-      width: 3px;
-      height: 4px;
-      background: var(--horeg-glow);
-      border-radius: 1px;
-      transition: height 0.1s ease;
-      box-shadow: 0 0 4px var(--horeg-glow);
+      max-width: 360px;
+      text-align: center;
     }
 
     /* Scrubbing / Fader Progress Bar */
@@ -418,24 +779,10 @@ export function generateStyles(theme: HoregTheme = {}): string {
       height: 7px;
       background: var(--horeg-slider-bg);
       border-radius: 4px;
-      cursor: grab;
+      cursor: pointer;
       overflow: hidden;
       box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
       touch-action: none;
-    }
-
-    .horeg-slider-track:hover {
-      cursor: grab;
-    }
-
-    .horeg-slider-track:active,
-    .horeg-slider-track.scrubbing {
-      cursor: grabbing;
-    }
-
-    .horeg-player-box.scrubbing,
-    .horeg-player-box.scrubbing * {
-      cursor: grabbing !important;
     }
 
     .horeg-buffer-bar {
@@ -576,11 +923,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-slider-bg);
       border-radius: 3px;
       outline: none;
-      cursor: grab;
-    }
-
-    .horeg-volume-slider:active {
-      cursor: grabbing;
+      cursor: pointer;
     }
 
     .horeg-volume-slider::-webkit-slider-thumb {
@@ -592,16 +935,12 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-glow);
       border: 1px solid var(--horeg-border);
       box-shadow: 0 0 6px var(--horeg-glow);
-      cursor: grab;
+      cursor: pointer;
       transition: transform 0.1s ease;
     }
 
     .horeg-volume-slider::-webkit-slider-thumb:hover {
       transform: scale(1.2);
-    }
-
-    .horeg-volume-slider:active::-webkit-slider-thumb {
-      cursor: grabbing;
     }
 
     .horeg-volume-slider::-moz-range-thumb {
@@ -611,11 +950,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-glow);
       border: 1px solid var(--horeg-border);
       box-shadow: 0 0 6px var(--horeg-glow);
-      cursor: grab;
-    }
-
-    .horeg-volume-slider:active::-moz-range-thumb {
-      cursor: grabbing;
+      cursor: pointer;
     }
 
     /* Drag Over Highlight on main player */

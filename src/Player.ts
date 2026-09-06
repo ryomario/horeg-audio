@@ -82,7 +82,8 @@ export class HoregAudio {
 
     // 4. Initialize Visualizer
     this.visualizer = new Visualizer({
-      container: this.ui.eqContainer,
+      stageContainer: this.ui.stageContainer,
+      coverContainer: this.ui.coverContainer,
       enableAnimation: this.theme.enableEqAnimation !== false
     });
 
@@ -126,6 +127,8 @@ export class HoregAudio {
         if (options.onError) options.onError(err);
       }
     });
+
+    this.visualizer.setAudioEnergyGetter(() => this.audioEngine.getAudioEnergy());
 
     // Initial states
     this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted());

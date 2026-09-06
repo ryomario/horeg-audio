@@ -278,21 +278,38 @@
       logEl.innerHTML = `[${time}] ${msg}<br/>` + logEl.innerHTML;
     }
 
+    const demoCover1 = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+        <defs>
+          <radialGradient id="grad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#f59e0b" />
+            <stop offset="60%" stop-color="#d97706" />
+            <stop offset="100%" stop-color="#18181b" />
+          </radialGradient>
+        </defs>
+        <circle cx="100" cy="100" r="96" fill="#0d0e12" stroke="#f59e0b" stroke-width="6"/>
+        <circle cx="100" cy="100" r="72" fill="none" stroke="#27272a" stroke-width="3"/>
+        <circle cx="100" cy="100" r="48" fill="url(#grad)"/>
+        <text x="100" y="106" fill="#000" font-size="16" font-weight="900" font-family="sans-serif" text-anchor="middle">PATI</text>
+      </svg>
+    `);
+
     // Initialize HoregAudio
     const player = new HoregAudio({
       container: '#player-mount',
       playlist: [
         {
           id: 1,
-          title: 'Bass Horeg Jedag-Jedug Extreme',
-          artist: 'DJ Riswanda Karnaval',
-          album: 'Festival Sound Jawa Timur',
+          title: 'Bass Horeg Jedag-Jedug Extreme Glerrr Sound System Karnaval Pati - Nonstop 130 BPM',
+          artist: 'DJ Riswanda Karnaval Pati',
+          album: 'Festival Sound Rig Pati 2026',
+          coverArt: demoCover1,
           src: synthTrack1,
           duration: 9.6
         },
         {
           id: 2,
-          title: 'Karnaval Audio Rig Battle',
+          title: 'Karnaval Audio Rig Battle Rembang-Pati',
           artist: 'Brewog Audio Master',
           album: 'Horeg Party Live 2026',
           src: synthTrack2,
@@ -300,7 +317,7 @@
         },
         {
           id: 3,
-          title: 'Subwoofer Earthquake 18 Inch',
+          title: 'Subwoofer Earthquake 18 Inch Monster Bass',
           artist: 'Faskho Sengon Rig',
           album: 'Mega Bass Volume 5',
           src: synthTrack3,

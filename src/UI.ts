@@ -19,7 +19,10 @@ export interface UIEvents {
 
 export class UI {
   public root: HTMLElement;
+  public stageContainer: HTMLElement;
   public eqContainer: HTMLElement;
+  public coverContainer: HTMLElement;
+  public titleWrap: HTMLElement;
 
   private playBtn: HTMLButtonElement;
   private prevBtn: HTMLButtonElement;
@@ -33,7 +36,6 @@ export class UI {
   private artistEl: HTMLElement;
   private albumEl: HTMLElement;
   private coverImgEl: HTMLImageElement | null = null;
-  private coverContainer: HTMLElement;
 
   private currentTimeEl: HTMLElement;
   private durationEl: HTMLElement;
@@ -86,29 +88,32 @@ export class UI {
     const header = createElement('div', { className: 'horeg-header' });
     const badge = createElement('div', {
       className: 'horeg-rig-badge',
-      innerHTML: `<span class="horeg-badge-led"></span> HOREG RIG • HIGH VOLTAGE`
+      innerHTML: `<span class="horeg-badge-led"></span> SOUND HOREG • HIGH VOLTAGE`
     });
     header.appendChild(badge);
     contentWrap.appendChild(header);
 
-    // 2. Track row (Cover art, metadata, visualizer)
-    const trackRow = createElement('div', { className: 'horeg-track-row' });
-    this.coverContainer = createElement('div', { className: 'horeg-cover-container' });
-    this.coverContainer.innerHTML = `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
-    trackRow.appendChild(this.coverContainer);
+    // 2. Full-Width 3-Soundbox Stage & Centered Metadata
+    this.stageContainer = createElement('div', { className: 'horeg-soundbox-stage' });
+    this.eqContainer = this.stageContainer; // backwards compatibility
 
-    const trackInfo = createElement('div', { className: 'horeg-track-info' });
+    this.coverContainer = createElement('div', { className: 'horeg-sub-cover-wrap' });
+    this.coverContainer.innerHTML = `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
+
+    const metaWrap = createElement('div', { className: 'horeg-track-meta' });
+    this.titleWrap = createElement('div', { className: 'horeg-title-wrap' });
     this.titleEl = createElement('div', { className: 'horeg-track-title', textContent: 'No Track Loaded' });
+    this.titleWrap.appendChild(this.titleEl);
+
     this.artistEl = createElement('div', { className: 'horeg-track-artist', textContent: 'Unknown Artist' });
     this.albumEl = createElement('div', { className: 'horeg-track-album', textContent: '' });
-    trackInfo.appendChild(this.titleEl);
-    trackInfo.appendChild(this.artistEl);
-    trackInfo.appendChild(this.albumEl);
-    trackRow.appendChild(trackInfo);
 
-    this.eqContainer = createElement('div', { className: 'horeg-eq-wrapper' });
-    trackRow.appendChild(this.eqContainer);
-    contentWrap.appendChild(trackRow);
+    metaWrap.appendChild(this.titleWrap);
+    metaWrap.appendChild(this.artistEl);
+    metaWrap.appendChild(this.albumEl);
+
+    contentWrap.appendChild(this.stageContainer);
+    contentWrap.appendChild(metaWrap);
 
     // 3. Progress / Scrubber Row
     const progressContainer = createElement('div', { className: 'horeg-progress-container' });
@@ -553,6 +558,37 @@ export class UI {
     } else {
       this.coverContainer.innerHTML = `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
     }
+
+    this.checkTitleMarquee();
+  }
+
+  public checkTitleMarquee(): void {
+    if (!this.titleEl || !this.titleWrap) return;
+    this.titleEl.classList.remove('is-marquee');
+    this.titleWrap.classList.remove('is-overflowing');
+    this.titleWrap.style.removeProperty('--marquee-dist');
+    this.titleWrap.style.removeProperty('--marquee-duration');
+    this.titleEl.style.removeProperty('--marquee-dist');
+    this.titleEl.style.removeProperty('--marquee-duration');
+
+    requestAnimationFrame(() => {
+      const titleWidth = this.titleEl.scrollWidth;
+      const wrapWidth = this.titleWrap.clientWidth;
+      if (titleWidth > wrapWidth && wrapWidth > 0) {
+        const overflowDist = titleWidth - wrapWidth + 20;
+        const duration = Math.max(6, Math.round(overflowDist / 18) + 3);
+        const distVal = `-${overflowDist}px`;
+        const durVal = `${duration}s`;
+
+        this.titleWrap.style.setProperty('--marquee-dist', distVal);
+        this.titleWrap.style.setProperty('--marquee-duration', durVal);
+        this.titleEl.style.setProperty('--marquee-dist', distVal);
+        this.titleEl.style.setProperty('--marquee-duration', durVal);
+
+        this.titleWrap.classList.add('is-overflowing');
+        this.titleEl.classList.add('is-marquee');
+      }
+    });
   }
 
   public updatePlayState(isPlaying: boolean): void {

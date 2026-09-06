@@ -13,6 +13,13 @@ export interface AudioEngineCallbacks {
   onLoadingChange?: (isLoading: boolean) => void;
 }
 
+export interface AudioEnergy {
+  bass: number;
+  midHigh: number;
+  left: number;
+  right: number;
+}
+
 export class AudioEngine {
   private audio: HTMLAudioElement;
   private playlist: Track[] = [];
@@ -23,8 +30,17 @@ export class AudioEngine {
   private previousVolume: number = 0.8;
   private callbacks: AudioEngineCallbacks = {};
 
+  private audioContext: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
+  private freqData: Uint8Array | null = null;
+  private webAudioInitialized: boolean = false;
+  private bassRollingAvg: number = 0.2;
+  private bassPulseEnvelope: number = 0;
+
   constructor(options: HoregPlayerOptions, callbacks: AudioEngineCallbacks = {}) {
     this.audio = new Audio();
+    this.audio.crossOrigin = 'anonymous';
     this.playlist = [...(options.playlist || [])];
     this.currentIndex = options.initialIndex !== undefined ? clamp(options.initialIndex, 0, Math.max(0, this.playlist.length - 1)) : 0;
     this.loopMode = options.loop || 'all';
@@ -107,20 +123,12 @@ export class AudioEngine {
   private handleProgress = (): void => {
     if (this.audio.buffered.length > 0 && this.audio.duration > 0) {
       const bufferedEnd = this.audio.buffered.end(this.audio.buffered.length - 1);
-      const percent = clamp((bufferedEnd / this.audio.duration) * 100, 0, 100);
+      const duration = this.audio.duration;
+      const percent = clamp((bufferedEnd / duration) * 100, 0, 100);
       if (this.callbacks.onBufferUpdate) {
         this.callbacks.onBufferUpdate(percent);
       }
     }
-  };
-
-  private handleLoadedMetadata = (): void => {
-    const current = this.audio.currentTime || 0;
-    const duration = this.getDuration();
-    if (this.callbacks.onTimeUpdate) {
-      this.callbacks.onTimeUpdate(current, duration);
-    }
-    this.handleProgress();
   };
 
   private handleWaiting = (): void => {
@@ -132,6 +140,13 @@ export class AudioEngine {
   private handlePlaying = (): void => {
     if (this.callbacks.onLoadingChange) {
       this.callbacks.onLoadingChange(false);
+    }
+  };
+
+  private handleLoadedMetadata = (): void => {
+    const duration = this.getDuration();
+    if (this.callbacks.onTimeUpdate) {
+      this.callbacks.onTimeUpdate(this.audio.currentTime || 0, duration);
     }
   };
 
@@ -308,13 +323,129 @@ export class AudioEngine {
   }
 
   public async play(): Promise<void> {
+    this.initWebAudio();
     try {
       await this.audio.play();
     } catch (err) {
-      // Modern browser autoplay policy rejection handling
-      // Prevents unhandled promise rejection error in developer console
       console.warn('[HoregAudio] Autoplay / Audio play was prevented by browser policy:', err);
     }
+  }
+
+  public initWebAudio(): void {
+    if (this.webAudioInitialized) {
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
+      return;
+    }
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      this.audioContext = new AudioCtx();
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 128;
+      this.analyser.smoothingTimeConstant = 0.65;
+      this.sourceNode = this.audioContext.createMediaElementSource(this.audio);
+      this.sourceNode.connect(this.analyser);
+      this.analyser.connect(this.audioContext.destination);
+      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+      this.webAudioInitialized = true;
+    } catch (e) {
+      this.webAudioInitialized = true;
+    }
+  }
+
+  public getAudioEnergy(): AudioEnergy {
+    if (!this.isPlaying()) {
+      return { bass: 0, midHigh: 0, left: 0, right: 0 };
+    }
+
+    const volumeFactor = this.isMuted() ? 0 : Math.max(0.35, Math.sqrt(this.volumeLevel));
+
+    // 1. Try reading from AnalyserNode
+    if (this.analyser && this.freqData && this.audioContext && this.audioContext.state === 'running') {
+      try {
+        (this.analyser as any).getByteFrequencyData(this.freqData);
+        let sumBass = 0;
+        const bassBins = Math.min(4, this.freqData.length);
+        for (let i = 0; i < bassBins; i++) {
+          sumBass += this.freqData[i];
+        }
+        let sumMid = 0;
+        const midBins = Math.min(16, this.freqData.length);
+        for (let i = bassBins; i < midBins; i++) {
+          sumMid += this.freqData[i];
+        }
+
+        const rawBass = sumBass / (bassBins * 255);
+        const rawMid = sumMid / ((midBins - bassBins) * 255);
+
+        // If audio is silent or below noise floor, energy MUST be 0
+        if (rawBass < 0.025 && rawMid < 0.025) {
+          this.bassPulseEnvelope *= 0.5;
+          if (this.bassPulseEnvelope < 0.01) this.bassPulseEnvelope = 0;
+          return {
+            bass: 0,
+            midHigh: 0,
+            left: 0,
+            right: 0
+          };
+        }
+
+        const soundEnergy = Math.max(rawBass, rawMid * 0.7);
+
+        // 1. Direct sustained bass presence (so rolling basslines/continuous notes don't vanish)
+        const sustainedBass = rawBass * 0.75;
+
+        // 2. Adaptive transient beat detection for kick punch
+        this.bassRollingAvg = this.bassRollingAvg * 0.92 + rawBass * 0.08;
+        const delta = Math.max(0, rawBass - this.bassRollingAvg);
+        const transientKick = delta > 0.006 ? Math.min(1, delta * 4.5 + 0.30 + rawBass * 0.35) : 0;
+
+        // 3. Dynamic minimal pulse (keeps subwoofer breathing/pulsing while music is sounding)
+        const t = this.audio.currentTime > 0 ? this.audio.currentTime : Date.now() / 1000;
+        const microPulse = (Math.sin(t * 13) * 0.5 + 0.5) * 0.08 * Math.min(1, soundEnergy * 2.5);
+        const minPulse = 0.09 * Math.min(1, soundEnergy * 3.0) + microPulse;
+
+        // Target bass combines transient kick, sustained bass, and guaranteed minimal pulse
+        const instantTarget = Math.max(transientKick, sustainedBass, minPulse);
+
+        // Fast attack, smooth decay that never drops below active minimal pulse
+        this.bassPulseEnvelope = Math.max(instantTarget, this.bassPulseEnvelope * 0.82);
+
+        const bassVal = Math.min(1, this.bassPulseEnvelope) * volumeFactor;
+        const midVal = Math.min(1, rawMid * 1.3) * volumeFactor;
+        return {
+          bass: bassVal,
+          midHigh: midVal,
+          left: midVal * 0.9,
+          right: midVal * 0.95
+        };
+      } catch (_) {
+        // Fall through to fallback ONLY if analyser threw an error
+      }
+    }
+
+    // 2. Intelligent Rhythmic Fallback (ONLY used if Analyser is not available or blocked)
+    if (!this.analyser || !this.audioContext || this.audioContext.state !== 'running') {
+      const t = this.audio.currentTime > 0 ? this.audio.currentTime : Date.now() / 1000;
+      const tempo = 130;
+      const beatInterval = 60 / tempo;
+      const beatPhase = (t % beatInterval) / beatInterval;
+      const kickEnvelope = Math.pow(Math.max(0, 1 - beatPhase * 2.2), 3.2);
+
+      const bass = clamp(Math.max(0.12, kickEnvelope), 0, 1) * volumeFactor;
+      const midHigh = clamp(Math.sin(t * 8) * 0.25 + 0.35 + kickEnvelope * 0.25, 0, 1) * volumeFactor;
+
+      return {
+        bass,
+        midHigh,
+        left: midHigh * 0.85,
+        right: midHigh * 0.9
+      };
+    }
+
+    return { bass: 0, midHigh: 0, left: 0, right: 0 };
   }
 
   public pause(): void {
@@ -330,28 +461,26 @@ export class AudioEngine {
   }
 
   public seek(seconds: number): void {
-    const duration = this.getDuration();
-    const clampedTime = clamp(seconds, 0, duration > 0 ? duration : Infinity);
-    this.audio.currentTime = clampedTime;
+    const dur = this.getDuration();
+    this.audio.currentTime = clamp(seconds, 0, dur || 0);
   }
 
   public setVolume(level: number): void {
-    const clamped = clamp(level, 0, 1);
-    this.volumeLevel = clamped;
-    this.audio.volume = clamped;
-    if (clamped > 0) {
+    this.volumeLevel = clamp(level, 0, 1);
+    this.audio.volume = this.volumeLevel;
+    if (this.volumeLevel > 0) {
       this.audio.muted = false;
-      this.previousVolume = clamped;
     }
   }
 
   public toggleMute(): boolean {
     if (this.isMuted()) {
       this.audio.muted = false;
-      this.setVolume(this.previousVolume > 0 ? this.previousVolume : 0.5);
+      this.audio.volume = this.previousVolume || 0.8;
+      this.volumeLevel = this.previousVolume || 0.8;
       return false;
     } else {
-      this.previousVolume = this.audio.volume;
+      this.previousVolume = this.volumeLevel;
       this.audio.muted = true;
       return true;
     }
@@ -359,6 +488,12 @@ export class AudioEngine {
 
   public next(isFromEnded: boolean = false): void {
     if (this.playlist.length === 0) return;
+
+    if (this.loopMode === 'one') {
+      this.seek(0);
+      this.play();
+      return;
+    }
 
     if (this.shuffleMode && this.playlist.length > 1) {
       let randomIndex: number;
@@ -384,9 +519,14 @@ export class AudioEngine {
   public prev(): void {
     if (this.playlist.length === 0) return;
 
-    // If more than 2 seconds in, restart track
-    if (this.audio.currentTime > 2) {
+    if (this.audio.currentTime > 3) {
       this.seek(0);
+      return;
+    }
+
+    if (this.loopMode === 'one') {
+      this.seek(0);
+      this.play();
       return;
     }
 
@@ -426,6 +566,8 @@ export class AudioEngine {
     this.audio.pause();
     this.audio.src = '';
     this.audio.load();
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close().catch(() => {});
+    }
   }
 }
-
