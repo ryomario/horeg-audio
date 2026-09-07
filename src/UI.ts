@@ -44,6 +44,9 @@ export class UI {
   private bufferBar: HTMLElement;
 
   private volumeSlider: HTMLInputElement;
+  private volumeWrap: HTMLElement;
+  private volumeDropup: HTMLElement;
+  private volumePercentEl: HTMLElement;
   private drawerEl: HTMLElement;
   private drawerCountEl: HTMLElement;
   private addTrackBtn: HTMLButtonElement;
@@ -149,12 +152,12 @@ export class UI {
     const leftControls = createElement('div', { className: 'horeg-side-controls' });
     this.shuffleBtn = createElement('button', {
       className: 'horeg-btn',
-      attributes: { 'aria-label': 'Toggle shuffle', type: 'button' },
+      attributes: { 'aria-label': 'Toggle shuffle', 'data-tooltip': 'Shuffle (S)', type: 'button' },
       innerHTML: ICONS.shuffle
     });
     this.loopBtn = createElement('button', {
       className: 'horeg-btn active',
-      attributes: { 'aria-label': 'Toggle loop mode', type: 'button' },
+      attributes: { 'aria-label': 'Toggle loop mode', 'data-tooltip': 'Repeat All (L)', type: 'button' },
       innerHTML: ICONS.repeat
     });
     leftControls.appendChild(this.shuffleBtn);
@@ -165,17 +168,17 @@ export class UI {
     const centerControls = createElement('div', { className: 'horeg-center-controls' });
     this.prevBtn = createElement('button', {
       className: 'horeg-btn',
-      attributes: { 'aria-label': 'Previous track', type: 'button' },
+      attributes: { 'aria-label': 'Previous track', 'data-tooltip': 'Previous (K)', type: 'button' },
       innerHTML: ICONS.prev
     });
     this.playBtn = createElement('button', {
       className: 'horeg-btn horeg-btn-play',
-      attributes: { 'aria-label': 'Play track', type: 'button' },
+      attributes: { 'aria-label': 'Play track', 'data-tooltip': 'Play (Space)', type: 'button' },
       innerHTML: ICONS.play
     });
     this.nextBtn = createElement('button', {
       className: 'horeg-btn',
-      attributes: { 'aria-label': 'Next track', type: 'button' },
+      attributes: { 'aria-label': 'Next track', 'data-tooltip': 'Next (J)', type: 'button' },
       innerHTML: ICONS.next
     });
     centerControls.appendChild(this.prevBtn);
@@ -183,32 +186,38 @@ export class UI {
     centerControls.appendChild(this.nextBtn);
     controlsRow.appendChild(centerControls);
 
-    // Side right: Volume & Drawer toggle
+    // Side right: Volume Dropup & Drawer toggle
     const rightControls = createElement('div', { className: 'horeg-side-controls' });
-    const volumeWrap = createElement('div', { className: 'horeg-volume-wrap' });
+    this.volumeWrap = createElement('div', { className: 'horeg-volume-wrap' });
     this.muteBtn = createElement('button', {
       className: 'horeg-btn',
-      attributes: { 'aria-label': 'Toggle mute', type: 'button' },
+      attributes: { 'aria-label': 'Toggle mute', 'data-tooltip': 'Volume 80% (M)', type: 'button' },
       innerHTML: ICONS.volumeHigh
     });
+    this.volumeDropup = createElement('div', { className: 'horeg-volume-dropup' });
+    this.volumePercentEl = createElement('span', { className: 'horeg-volume-percent', textContent: '80%' });
     this.volumeSlider = createElement('input', {
-      className: 'horeg-volume-slider',
+      className: 'horeg-volume-slider-vertical',
       attributes: {
         type: 'range',
         min: '0',
         max: '1',
         step: '0.01',
         value: '0.8',
+        orient: 'vertical',
         'aria-label': 'Volume control'
       }
     });
-    volumeWrap.appendChild(this.muteBtn);
-    volumeWrap.appendChild(this.volumeSlider);
-    rightControls.appendChild(volumeWrap);
+    this.volumeDropup.appendChild(this.volumePercentEl);
+    this.volumeDropup.appendChild(this.volumeSlider);
+
+    this.volumeWrap.appendChild(this.muteBtn);
+    this.volumeWrap.appendChild(this.volumeDropup);
+    rightControls.appendChild(this.volumeWrap);
 
     this.drawerBtn = createElement('button', {
       className: 'horeg-btn',
-      attributes: { 'aria-label': 'Toggle playlist drawer', type: 'button' },
+      attributes: { 'aria-label': 'Toggle playlist drawer', 'data-tooltip': 'Playlist', type: 'button' },
       innerHTML: ICONS.playlist
     });
     rightControls.appendChild(this.drawerBtn);
@@ -229,7 +238,7 @@ export class UI {
 
     this.addTrackBtn = createElement('button', {
       className: 'horeg-btn-add-track',
-      attributes: { type: 'button', 'aria-label': 'Add track to playlist' },
+      attributes: { type: 'button', 'aria-label': 'Add track to playlist', 'data-tooltip': 'Add Track' },
       innerHTML: `${ICONS.plus} <span>Add Track</span>`
     });
     drawerHeader.appendChild(this.addTrackBtn);
@@ -243,7 +252,7 @@ export class UI {
     this.tabBtnFile = createElement('button', {
       className: 'horeg-tab-btn active',
       attributes: { type: 'button' },
-      innerHTML: `${ICONS.upload} <span>File Lokal</span>`
+      innerHTML: `${ICONS.upload} <span>Local File</span>`
     });
     this.tabBtnUrl = createElement('button', {
       className: 'horeg-tab-btn',
@@ -262,8 +271,8 @@ export class UI {
     this.dropzoneEl = createElement('div', { className: 'horeg-dropzone' });
     this.dropzoneEl.innerHTML = `
       <div class="horeg-dropzone-icon">${ICONS.upload}</div>
-      <div class="horeg-dropzone-text">Pilih File Audio Komputer</div>
-      <div class="horeg-dropzone-hint">Klik di sini atau drag & drop file (.mp3, .wav, .flac, .ogg, .m4a)</div>
+      <div class="horeg-dropzone-text">Choose Local Audio File</div>
+      <div class="horeg-dropzone-hint">Click here or drag & drop audio files (.mp3, .wav, .flac, .ogg, .m4a)</div>
     `;
     this.tabPaneFile.appendChild(this.fileInputEl);
     this.tabPaneFile.appendChild(this.dropzoneEl);
@@ -277,22 +286,22 @@ export class UI {
     });
     this.titleInput = createElement('input', {
       className: 'horeg-input-field',
-      attributes: { type: 'text', placeholder: 'Judul Lagu (Opsional)' }
+      attributes: { type: 'text', placeholder: 'Track Title (Optional)' }
     });
     this.artistInput = createElement('input', {
       className: 'horeg-input-field',
-      attributes: { type: 'text', placeholder: 'Nama Artis (Opsional)' }
+      attributes: { type: 'text', placeholder: 'Artist Name (Optional)' }
     });
     const formActions = createElement('div', { className: 'horeg-form-actions' });
     this.cancelAddBtn = createElement('button', {
       className: 'horeg-btn-cancel',
       attributes: { type: 'button' },
-      textContent: 'Batal'
+      textContent: 'Cancel'
     });
     this.submitUrlBtn = createElement('button', {
       className: 'horeg-btn-submit',
       attributes: { type: 'button' },
-      innerHTML: `${ICONS.plus} Tambah`
+      innerHTML: `${ICONS.plus} Add Track`
     });
     formActions.appendChild(this.cancelAddBtn);
     formActions.appendChild(this.submitUrlBtn);
@@ -322,7 +331,10 @@ export class UI {
     this.muteBtn.addEventListener('click', () => this.events.onMuteToggle());
 
     this.volumeSlider.addEventListener('input', () => {
-      this.events.onVolumeChange(parseFloat(this.volumeSlider.value));
+      const val = parseFloat(this.volumeSlider.value);
+      this.events.onVolumeChange(val);
+      const percent = Math.round(val * 100);
+      this.volumePercentEl.textContent = val === 0 ? 'MUTE' : `${percent}%`;
     });
 
     this.drawerBtn.addEventListener('click', () => {
@@ -596,10 +608,12 @@ export class UI {
       this.playBtn.classList.add('playing');
       this.playBtn.innerHTML = ICONS.pause;
       this.playBtn.setAttribute('aria-label', 'Pause track');
+      this.playBtn.setAttribute('data-tooltip', 'Pause (Space)');
     } else {
       this.playBtn.classList.remove('playing');
       this.playBtn.innerHTML = ICONS.play;
       this.playBtn.setAttribute('aria-label', 'Play track');
+      this.playBtn.setAttribute('data-tooltip', 'Play (Space)');
     }
   }
 
@@ -621,12 +635,26 @@ export class UI {
 
   public updateVolume(volume: number, isMuted: boolean): void {
     this.volumeSlider.value = volume.toString();
+    const percent = Math.round(volume * 100);
+
     if (isMuted || volume === 0) {
       this.muteBtn.innerHTML = ICONS.volumeMute;
       this.muteBtn.setAttribute('aria-label', 'Unmute');
+      this.muteBtn.setAttribute('data-tooltip', 'Unmute (M)');
+      this.volumePercentEl.textContent = 'MUTE';
     } else {
-      this.muteBtn.innerHTML = ICONS.volumeHigh;
-      this.muteBtn.setAttribute('aria-label', 'Mute');
+      this.volumePercentEl.textContent = `${percent}%`;
+      this.muteBtn.setAttribute('data-tooltip', `Volume ${percent}% (M)`);
+      if (volume <= 0.35) {
+        this.muteBtn.innerHTML = ICONS.volumeLow;
+        this.muteBtn.setAttribute('aria-label', 'Volume low');
+      } else if (volume <= 0.70) {
+        this.muteBtn.innerHTML = ICONS.volumeMedium;
+        this.muteBtn.setAttribute('aria-label', 'Volume medium');
+      } else {
+        this.muteBtn.innerHTML = ICONS.volumeHigh;
+        this.muteBtn.setAttribute('aria-label', 'Volume high');
+      }
     }
   }
 
@@ -634,12 +662,15 @@ export class UI {
     if (mode === 'none') {
       this.loopBtn.classList.remove('active');
       this.loopBtn.innerHTML = ICONS.repeat;
+      this.loopBtn.setAttribute('data-tooltip', 'Repeat Off (L)');
     } else if (mode === 'all') {
       this.loopBtn.classList.add('active');
       this.loopBtn.innerHTML = ICONS.repeat;
+      this.loopBtn.setAttribute('data-tooltip', 'Repeat All (L)');
     } else if (mode === 'one') {
       this.loopBtn.classList.add('active');
       this.loopBtn.innerHTML = ICONS.repeatOne;
+      this.loopBtn.setAttribute('data-tooltip', 'Repeat One (L)');
     }
     this.loopBtn.setAttribute('aria-label', `Repeat mode: ${mode}`);
   }
@@ -647,8 +678,10 @@ export class UI {
   public updateShuffleState(isShuffle: boolean): void {
     if (isShuffle) {
       this.shuffleBtn.classList.add('active');
+      this.shuffleBtn.setAttribute('data-tooltip', 'Shuffle Off (S)');
     } else {
       this.shuffleBtn.classList.remove('active');
+      this.shuffleBtn.setAttribute('data-tooltip', 'Shuffle (S)');
     }
   }
 
@@ -676,7 +709,7 @@ export class UI {
     if (playlist.length === 0) {
       const emptyEl = createElement('div', {
         className: 'horeg-empty-playlist',
-        textContent: 'Playlist masih kosong. Klik "Add Track" untuk menambahkan lagu.'
+        textContent: 'Playlist is empty. Click "Add Track" to add music.'
       });
       this.drawerInner.appendChild(emptyEl);
       return;
@@ -718,7 +751,7 @@ export class UI {
       const actions = createElement('div', { className: 'horeg-track-actions' });
       const removeBtn = createElement('button', {
         className: 'horeg-btn-remove',
-        attributes: { type: 'button', 'aria-label': 'Hapus lagu dari playlist' },
+        attributes: { type: 'button', 'aria-label': 'Remove track from playlist', 'data-tooltip': 'Remove' },
         innerHTML: ICONS.trash
       });
       removeBtn.addEventListener('click', (e) => {

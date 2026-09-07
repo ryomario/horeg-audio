@@ -173,8 +173,17 @@
       <button class="theme-btn" id="btn-light-minimal">📄 Light Minimal</button>
     </div>
 
+    <!-- Container Width Tester -->
+    <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <span style="font-size: 11px; color: #a1a1aa; font-weight: 700; letter-spacing: 0.5px;">CONTAINER WIDTH:</span>
+      <button class="theme-btn active" id="width-fluid" style="padding: 4px 10px; font-size: 11px;">Fluid (100%)</button>
+      <button class="theme-btn" id="width-520" style="padding: 4px 10px; font-size: 11px;">520px</button>
+      <button class="theme-btn" id="width-360" style="padding: 4px 10px; font-size: 11px;">360px (Responsive)</button>
+      <button class="theme-btn" id="width-320" style="padding: 4px 10px; font-size: 11px;">320px (Mobile)</button>
+    </div>
+
     <!-- Player Mount Point -->
-    <div id="player-mount"></div>
+    <div id="player-mount" style="width: 100%; transition: max-width 0.3s ease; margin: 0 auto;"></div>
 
     <!-- Interactive API Controls -->
     <div class="sandbox-card">
@@ -384,6 +393,26 @@
       setActiveBtn(btnLightMinimal);
       player.setTheme({ variant: 'horeg-light-minimal' });
       log('🎨 Theme changed: horeg-light-minimal (Slate Minimal)');
+    });
+
+    // Container Width Switchers
+    const mountEl = document.getElementById('player-mount');
+    const widthBtns = [
+      { id: 'width-fluid', width: 'none', label: 'Fluid (100%)' },
+      { id: 'width-520', width: '520px', label: '520px' },
+      { id: 'width-360', width: '360px', label: '360px (Responsive)' },
+      { id: 'width-320', width: '320px', label: '320px (Mobile)' }
+    ];
+    widthBtns.forEach(item => {
+      const btn = document.getElementById(item.id);
+      if (btn) {
+        btn.addEventListener('click', () => {
+          widthBtns.forEach(b => document.getElementById(b.id)?.classList.remove('active'));
+          btn.classList.add('active');
+          mountEl.style.maxWidth = item.width;
+          log(`📐 Container width changed: ${item.label}`);
+        });
+      }
     });
 
     // API Buttons

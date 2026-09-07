@@ -39,7 +39,7 @@ export class HoregAudio {
 
     // 2. Inject encapsulated styles
     this.styleEl = document.createElement('style');
-    this.styleEl.textContent = generateStyles(this.theme);
+    this.styleEl.textContent = generateStyles(this.theme, options.maxWidth);
     this.shadow.appendChild(this.styleEl);
 
     // 3. Instantiate UI
@@ -238,7 +238,7 @@ export class HoregAudio {
     const track: Track = {
       id: `local-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       title: nameWithoutExt,
-      artist: 'File Audio Lokal',
+      artist: 'Local Audio File',
       src
     };
 

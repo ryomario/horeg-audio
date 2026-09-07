@@ -41,6 +41,7 @@ export interface HoregPlayerOptions {
   loop?: LoopMode;
   shuffle?: boolean;
   volume?: number; // 0.0 to 1.0
+  maxWidth?: number | string; // Optional container max-width (number in px or CSS string). If not set, container is fluid.
   theme?: HoregTheme;
   onPlay?: (track: Track) => void;
   onPause?: () => void;

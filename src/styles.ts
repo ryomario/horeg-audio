@@ -113,9 +113,16 @@ export const THEME_PRESETS: Record<ThemeVariant, Partial<HoregTheme>> = {
 /**
  * Returns complete encapsulated CSS string for the Shadow DOM.
  */
-export function generateStyles(theme: HoregTheme = {}): string {
+export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | string): string {
   const variant = theme.variant || 'horeg-classic';
   const preset = THEME_PRESETS[variant] || THEME_PRESETS['horeg-classic'];
+
+  let maxWidthCss = 'none';
+  if (typeof maxWidth === 'number') {
+    maxWidthCss = `${maxWidth}px`;
+  } else if (typeof maxWidth === 'string' && maxWidth.trim() !== '' && maxWidth.trim().toLowerCase() !== 'fluid') {
+    maxWidthCss = maxWidth.trim();
+  }
 
   const isLight =
     theme.isLight ??
@@ -160,6 +167,9 @@ export function generateStyles(theme: HoregTheme = {}): string {
 
   return `
     :host {
+      display: block;
+      width: 100%;
+      --horeg-max-width: ${maxWidthCss};
       --horeg-bg: ${bg};
       --horeg-surface: ${surface};
       --horeg-surface-hover: ${surfaceHover};
@@ -203,6 +213,8 @@ export function generateStyles(theme: HoregTheme = {}): string {
     }
 
     .horeg-player-box {
+      container-type: inline-size;
+      container-name: horeg-box;
       background: var(--horeg-bg);
       border: 2px solid var(--horeg-border);
       border-radius: var(--horeg-radius);
@@ -210,8 +222,8 @@ export function generateStyles(theme: HoregTheme = {}): string {
       color: var(--horeg-text-main);
       position: relative;
       overflow: hidden;
-      max-width: 520px;
       width: 100%;
+      max-width: var(--horeg-max-width, none);
       margin: 0 auto;
       transition: box-shadow 0.3s ease, border-color 0.3s ease;
     }
@@ -846,6 +858,7 @@ export function generateStyles(theme: HoregTheme = {}): string {
       justify-content: center;
       transition: all 0.15s ease;
       touch-action: manipulation;
+      position: relative;
     }
 
     .horeg-btn:hover {
@@ -868,6 +881,100 @@ export function generateStyles(theme: HoregTheme = {}): string {
       background: var(--horeg-btn-active-bg);
       text-shadow: 0 0 8px var(--horeg-glow);
       box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.05);
+    }
+
+    /* Tooltip Bubble */
+    .horeg-btn[data-tooltip]::before {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      background: ${isLight ? 'rgba(15, 23, 42, 0.94)' : 'rgba(20, 20, 24, 0.96)'};
+      color: ${isLight ? '#f8fafc' : 'var(--horeg-text-main)'};
+      border: 1px solid var(--horeg-border);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 8px rgba(var(--horeg-glow-rgb), 0.3);
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 5px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+      z-index: 35;
+      letter-spacing: 0.2px;
+      font-family: inherit;
+    }
+
+    /* Tooltip Arrow */
+    .horeg-btn[data-tooltip]::after {
+      content: '';
+      position: absolute;
+      bottom: calc(100% + 2px);
+      left: 50%;
+      transform: translateX(-50%) translateY(4px);
+      border-width: 5px 5px 0 5px;
+      border-style: solid;
+      border-color: ${isLight ? 'rgba(15, 23, 42, 0.94)' : 'rgba(20, 20, 24, 0.96)'} transparent transparent transparent;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+      z-index: 35;
+    }
+
+    .horeg-btn[data-tooltip]:hover::before,
+    .horeg-btn[data-tooltip]:focus-visible::before,
+    .horeg-btn[data-tooltip]:hover::after,
+    .horeg-btn[data-tooltip]:focus-visible::after {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Edge alignment so tooltips near container margins don't clip */
+    .horeg-side-controls:first-child .horeg-btn:first-child[data-tooltip]::before {
+      left: 0;
+      transform: translateY(4px);
+    }
+    .horeg-side-controls:first-child .horeg-btn:first-child[data-tooltip]::after {
+      left: 12px;
+      transform: translateY(4px);
+    }
+    .horeg-side-controls:first-child .horeg-btn:first-child[data-tooltip]:hover::before,
+    .horeg-side-controls:first-child .horeg-btn:first-child[data-tooltip]:focus-visible::before,
+    .horeg-side-controls:first-child .horeg-btn:first-child[data-tooltip]:hover::after,
+    .horeg-side-controls:first-child .horeg-btn:first-child[data-tooltip]:focus-visible::after {
+      transform: translateY(0);
+    }
+
+    .horeg-side-controls:last-child .horeg-btn:last-child[data-tooltip]::before {
+      left: auto;
+      right: 0;
+      transform: translateY(4px);
+    }
+    .horeg-side-controls:last-child .horeg-btn:last-child[data-tooltip]::after {
+      left: auto;
+      right: 12px;
+      transform: translateY(4px);
+    }
+    .horeg-side-controls:last-child .horeg-btn:last-child[data-tooltip]:hover::before,
+    .horeg-side-controls:last-child .horeg-btn:last-child[data-tooltip]:focus-visible::before,
+    .horeg-side-controls:last-child .horeg-btn:last-child[data-tooltip]:hover::after,
+    .horeg-side-controls:last-child .horeg-btn:last-child[data-tooltip]:focus-visible::after {
+      transform: translateY(0);
+    }
+
+    /* Suppress volume button tooltip when dropup is active */
+    .horeg-volume-wrap:hover .horeg-btn[data-tooltip]::before,
+    .horeg-volume-wrap:hover .horeg-btn[data-tooltip]::after,
+    .horeg-volume-wrap:focus-within .horeg-btn[data-tooltip]::before,
+    .horeg-volume-wrap:focus-within .horeg-btn[data-tooltip]::after,
+    .horeg-volume-wrap.open .horeg-btn[data-tooltip]::before,
+    .horeg-volume-wrap.open .horeg-btn[data-tooltip]::after {
+      display: none;
     }
 
     /* Primary Play / Pause Button with Neon Glow Pulse */
@@ -908,47 +1015,116 @@ export function generateStyles(theme: HoregTheme = {}): string {
       }
     }
 
-    /* Volume Slider Rel Mixer */
+    /* Vertical Volume Dropup Mixer */
     .horeg-volume-wrap {
+      position: relative;
       display: flex;
       align-items: center;
-      gap: 6px;
+      justify-content: center;
     }
 
-    .horeg-volume-slider {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 70px;
-      height: 5px;
+    .horeg-volume-dropup {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: ${isLight ? '#ffffff' : 'var(--horeg-surface)'};
+      border: 1px solid var(--horeg-border);
+      border-radius: 10px;
+      padding: 8px 6px 8px 6px;
+      box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.6), 0 0 10px -2px var(--horeg-glow);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      width: 36px;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.18s ease;
+      z-index: 40;
+    }
+
+    /* Dropup hover bridge */
+    .horeg-volume-dropup::before {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: -8px;
+      right: -8px;
+      height: 12px;
+      background: transparent;
+    }
+
+    /* Dropup arrow pointer */
+    .horeg-volume-dropup::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 5px 5px 0 5px;
+      border-style: solid;
+      border-color: ${isLight ? '#ffffff' : 'var(--horeg-surface)'} transparent transparent transparent;
+    }
+
+    .horeg-volume-wrap:hover .horeg-volume-dropup,
+    .horeg-volume-wrap:focus-within .horeg-volume-dropup,
+    .horeg-volume-wrap.open .horeg-volume-dropup {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .horeg-volume-percent {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--horeg-glow);
+      font-family: ui-monospace, monospace;
+      letter-spacing: 0.5px;
+      user-select: none;
+      text-align: center;
+      line-height: 1;
+    }
+
+    .horeg-volume-slider-vertical {
+      -webkit-appearance: slider-vertical;
+      appearance: slider-vertical;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      width: 8px;
+      height: 84px;
       background: var(--horeg-slider-bg);
-      border-radius: 3px;
+      border-radius: 4px;
       outline: none;
       cursor: pointer;
+      margin: 0 auto;
     }
 
-    .horeg-volume-slider::-webkit-slider-thumb {
+    .horeg-volume-slider-vertical::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 12px;
-      height: 12px;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
       background: var(--horeg-glow);
-      border: 1px solid var(--horeg-border);
+      border: 2px solid ${isLight ? '#ffffff' : '#18181b'};
       box-shadow: 0 0 6px var(--horeg-glow);
       cursor: pointer;
       transition: transform 0.1s ease;
     }
 
-    .horeg-volume-slider::-webkit-slider-thumb:hover {
+    .horeg-volume-slider-vertical::-webkit-slider-thumb:hover {
       transform: scale(1.2);
     }
 
-    .horeg-volume-slider::-moz-range-thumb {
-      width: 12px;
-      height: 12px;
+    .horeg-volume-slider-vertical::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
       background: var(--horeg-glow);
-      border: 1px solid var(--horeg-border);
+      border: 2px solid ${isLight ? '#ffffff' : '#18181b'};
       box-shadow: 0 0 6px var(--horeg-glow);
       cursor: pointer;
     }
@@ -1364,6 +1540,78 @@ export function generateStyles(theme: HoregTheme = {}): string {
       color: var(--horeg-text-muted);
       font-size: 12px;
       font-style: italic;
+    }
+
+    /* Responsive Layout (<= 360px): Single Center Soundbox & Wrapped Controls */
+    @container horeg-box (max-width: 360px) {
+      .horeg-content-wrap {
+        padding: 14px 14px 12px 14px;
+        gap: 10px;
+      }
+
+      /* 1. Visualizer: Hide Satellite Soundboxes, Center Subwoofer Dominates */
+      .horeg-soundbox.is-satellite {
+        display: none !important;
+      }
+
+      .horeg-soundbox-stage {
+        padding: 10px 12px;
+        gap: 0;
+      }
+
+      /* 2. Controls Row: Wrap into 2 Rows */
+      .horeg-controls-row {
+        flex-wrap: wrap;
+        gap: 10px 0;
+        justify-content: space-between;
+      }
+
+      /* Row 1: Center Controls (Prev, Play, Next) centered on top */
+      .horeg-center-controls {
+        order: 1;
+        width: 100%;
+        justify-content: center;
+        gap: 16px;
+        margin-bottom: 2px;
+      }
+
+      /* Row 2: Left Tools (Shuffle, Loop) & Right Tools (Volume, Playlist) with space-between */
+      .horeg-side-controls:first-child {
+        order: 2;
+      }
+
+      .horeg-side-controls:last-child {
+        order: 3;
+      }
+    }
+
+    /* Viewport Media Query fallback */
+    @media (max-width: 360px) {
+      .horeg-soundbox.is-satellite {
+        display: none !important;
+      }
+      .horeg-soundbox-stage {
+        padding: 10px 12px;
+        gap: 0;
+      }
+      .horeg-controls-row {
+        flex-wrap: wrap;
+        gap: 10px 0;
+        justify-content: space-between;
+      }
+      .horeg-center-controls {
+        order: 1;
+        width: 100%;
+        justify-content: center;
+        gap: 16px;
+        margin-bottom: 2px;
+      }
+      .horeg-side-controls:first-child {
+        order: 2;
+      }
+      .horeg-side-controls:last-child {
+        order: 3;
+      }
     }
   `;
 }
