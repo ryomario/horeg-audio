@@ -36,16 +36,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
       - uses: actions/setup-node@v6
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
       - name: Build Demo App
         env:
           GITHUB_PAGES: 'true'
-        run: npm run build
+        run: pnpm run build
         
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
