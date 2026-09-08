@@ -31,8 +31,9 @@ export class Visualizer {
   private rightBottomDriverEl!: HTMLElement;
   private rightRipples: HTMLElement[] = [];
 
-  // Physics values for smooth excursion and decay
+  // Physics values for bouncy excursion and decay
   private smoothBass: number = 0;
+  private bassVelocity: number = 0;
   private smoothLeft: number = 0;
   private smoothRight: number = 0;
 
@@ -221,9 +222,10 @@ export class Visualizer {
     }
 
     const step = () => {
-      this.smoothBass *= 0.80;
-      this.smoothLeft *= 0.80;
-      this.smoothRight *= 0.80;
+      this.smoothBass *= 0.75;
+      this.bassVelocity = 0;
+      this.smoothLeft *= 0.75;
+      this.smoothRight *= 0.75;
 
       this.applyExcursion(this.smoothBass, this.smoothLeft, this.smoothRight);
 
@@ -231,6 +233,7 @@ export class Visualizer {
         this.animFrameId = requestAnimationFrame(step);
       } else {
         this.smoothBass = 0;
+        this.bassVelocity = 0;
         this.smoothLeft = 0;
         this.smoothRight = 0;
         this.applyExcursion(0, 0, 0);
@@ -250,13 +253,20 @@ export class Visualizer {
     const targetLeft = energy.left < 0.01 ? 0 : energy.left;
     const targetRight = energy.right < 0.01 ? 0 : energy.right;
 
-    // Fast attack (snap to kick beat), fast bouncy release back to small rest radius
-    if (targetBass > this.smoothBass) {
-      this.smoothBass += (targetBass - this.smoothBass) * 0.85;
-    } else {
-      this.smoothBass += (targetBass - this.smoothBass) * 0.38;
+    // Bouncy spring-damper physical simulation:
+    // Models the elastic mechanical suspension (spider & rubber surround) of an 18" subwoofer.
+    // Instant attack punch with lively elastic recoil overshoot and bouncy bounce!
+    const stiffness = targetBass > this.smoothBass ? 0.72 : 0.48;
+    const damping = 0.60;
+
+    const force = (targetBass - this.smoothBass) * stiffness;
+    this.bassVelocity = (this.bassVelocity + force) * damping;
+    this.smoothBass += this.bassVelocity;
+
+    if (this.smoothBass < 0.002) {
+      this.smoothBass = 0;
+      this.bassVelocity = 0;
     }
-    if (this.smoothBass < 0.01) this.smoothBass = 0;
 
     this.smoothLeft += (targetLeft - this.smoothLeft) * 0.40;
     if (this.smoothLeft < 0.01) this.smoothLeft = 0;
@@ -270,24 +280,24 @@ export class Visualizer {
   };
 
   private applyExcursion(bass: number, left: number, right: number): void {
-    // 1. Center Monster Subwoofer (Exclusively driven by Bass)
-    const subScale = 1.0 + bass * 0.42;
+    // 1. Center Monster Subwoofer: Proportional excursion scaled according to dB capacity
+    const subScale = 1.0 + bass * 0.25;
     this.subConeEl.style.transform = `scale(${subScale.toFixed(3)})`;
 
-    // Subwoofer cabinet only swells when real bass is actively punching
-    const boxScale = bass > 0.15 ? 1.0 + (bass - 0.15) * 0.08 : 1.0;
+    // Subwoofer cabinet only swells when real heavy bass is actively punching (> 0.45)
+    const boxScale = bass > 0.45 ? 1.0 + (bass - 0.45) * 0.04 : 1.0;
     this.subBoxEl.style.transform = `scale(${boxScale.toFixed(3)})`;
 
-    // Subwoofer Shockwaves: Trigger strictly on real bass punch
-    if (bass > 0.16) {
-      const shockPower = (bass - 0.16) / 0.84;
-      const waveScale1 = 1.0 + shockPower * 0.85;
-      const waveOpacity1 = Math.min(0.95, shockPower * 1.6);
+    // Subwoofer Shockwaves: Trigger strictly on heavy bass hits (> 0.50), scaled to capacity
+    if (bass > 0.50) {
+      const shockPower = (bass - 0.50) / 0.50;
+      const waveScale1 = 1.0 + shockPower * 0.45;
+      const waveOpacity1 = Math.min(0.85, shockPower * 1.2);
       this.shockwave1El.style.transform = `scale(${waveScale1.toFixed(3)})`;
       this.shockwave1El.style.opacity = waveOpacity1.toFixed(2);
 
-      const waveScale2 = 1.0 + shockPower * 1.25;
-      const waveOpacity2 = Math.max(0, (shockPower - 0.15) * 1.4);
+      const waveScale2 = 1.0 + shockPower * 0.70;
+      const waveOpacity2 = Math.max(0, (shockPower - 0.20) * 1.0);
       this.shockwave2El.style.transform = `scale(${waveScale2.toFixed(3)})`;
       this.shockwave2El.style.opacity = waveOpacity2.toFixed(2);
     } else {
@@ -298,18 +308,18 @@ export class Visualizer {
     }
 
     // 2. Left & Right Satellites (Cones excursion)
-    const leftScale = 1.0 + left * 0.08;
+    const leftScale = 1.0 + left * 0.12;
     if (this.leftTopDriverEl) this.leftTopDriverEl.style.transform = `scale(${leftScale.toFixed(3)})`;
     if (this.leftBottomDriverEl) this.leftBottomDriverEl.style.transform = `scale(${leftScale.toFixed(3)})`;
 
-    const rightScale = 1.0 + right * 0.08;
+    const rightScale = 1.0 + right * 0.12;
     if (this.rightTopDriverEl) this.rightTopDriverEl.style.transform = `scale(${rightScale.toFixed(3)})`;
     if (this.rightBottomDriverEl) this.rightBottomDriverEl.style.transform = `scale(${rightScale.toFixed(3)})`;
 
     // 3. Compact Water-like Ripples on the 4 Satellite Circles (2 Left, 2 Right)
     // Ripples expand subtly on a small radius and fade away cleanly
     const applyRipples = (ripples: HTMLElement[], intensity: number) => {
-      const hasSignal = intensity > 0.12;
+      const hasSignal = intensity > 0.04;
       for (let i = 0; i < ripples.length; i++) {
         const ripple = ripples[i];
         const isSecond = ripple.classList.contains('ripple-2');

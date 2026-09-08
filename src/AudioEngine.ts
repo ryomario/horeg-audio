@@ -39,6 +39,7 @@ export class AudioEngine {
   private webAudioInitialized: boolean = false;
   private currentBassGain: number = 0;
   private bassPulseEnvelope: number = 0;
+  private bassDbFloor: number = -60;
 
   constructor(options: HoregPlayerOptions, callbacks: AudioEngineCallbacks = {}) {
     this.audio = new Audio();
@@ -431,6 +432,16 @@ export class AudioEngine {
           };
         }
 
+        // TRANSIENT ONSET VS SMOOTH SUSTAIN DETECTION:
+        // Ketukan (beats/kicks) produce a sharp positive jump in dB relative to the rolling floor.
+        // Smooth sustained bass (drones/long notes) has little to no onset delta.
+        if (currentBassDb < this.bassDbFloor) {
+          this.bassDbFloor = currentBassDb;
+        } else {
+          this.bassDbFloor = this.bassDbFloor * 0.84 + currentBassDb * 0.16;
+        }
+        const dbOnset = Math.max(0, currentBassDb - this.bassDbFloor);
+
         // DECIBEL-BASED BASS DETECTION & EXCURSION:
         // Audible bass starts above -42 dBFS. Anything below -42 dBFS is sub-bass floor/silence.
         // Powerful bass drops and heavy kick punches typically hit between -22 dBFS and -8 dBFS.
@@ -440,20 +451,33 @@ export class AudioEngine {
         let instantBass = 0;
 
         if (isBassActive) {
-          // Map the dB level (-42 dBFS to -10 dBFS) smoothly to physical excursion
-          const dbRatio = clamp((currentBassDb - BASS_CUTOFF_DB) / (BASS_MAX_DB - BASS_CUTOFF_DB), 0, 1);
-          instantBass = Math.min(1.0, Math.pow(dbRatio, 0.70) * 1.15);
+          // Linear capacity of emitted dB between -42 dBFS (inaudible) and -10 dBFS (max drop)
+          const dbCapacity = clamp((currentBassDb - BASS_CUTOFF_DB) / (BASS_MAX_DB - BASS_CUTOFF_DB), 0, 1);
+          // Transient onset ratio: how sharp the beat hit is
+          const onsetRatio = clamp(dbOnset / 16, 0, 1);
+          // Radius scale strictly bounded by the emitted dB capacity:
+          // Soft beats (e.g. -32 dB) produce small radius (0.20 - 0.25).
+          // Medium beats (e.g. -24 dB) produce medium radius (0.45 - 0.55).
+          // Heavy beats (e.g. -14 dB) produce punchy radius (0.75 - 0.85).
+          // Max drops (e.g. -10 dB) produce full radius (1.0).
+          instantBass = dbCapacity * (0.65 + 0.35 * onsetRatio);
         } else {
-          // Stagnant small radius during non-bass sections (< -42 dBFS)
-          instantBass = 0.015;
+          // No sub-bass (< -42 dBFS), but audio/music IS playing (e.g. vocals, melody, acoustic):
+          // Provide a subtle, visible rhythmic breathing motion so the visualizer stays alive!
+          const t = this.audio.currentTime > 0 ? this.audio.currentTime : Date.now() / 1000;
+          const cadence = Math.sin(t * 9) * 0.5 + 0.5;
+          // Music amplitude from mid frequencies (-60 dBFS to -18 dBFS)
+          const musicPresence = clamp((maxMidDb - (-60)) / ((-18) - (-60)), 0, 1);
+          // Subtle breathing excursion (~0.015 to 0.040)
+          instantBass = (0.012 + cadence * 0.028) * musicPresence;
         }
 
-        // Fast attack (instant snap on kick hit), snappy release (bounce back between beats)
+        // Fast attack, snappy release
         if (instantBass > this.bassPulseEnvelope) {
           this.bassPulseEnvelope = instantBass;
         } else {
-          // Exponential decay per frame (~120ms snap back to rest)
-          this.bassPulseEnvelope = Math.max(0.015, this.bassPulseEnvelope * 0.76);
+          // Snappy decay per frame (~110ms snap back to baseline)
+          this.bassPulseEnvelope = Math.max(instantBass, this.bassPulseEnvelope * 0.76);
         }
 
         const bassVal = Math.min(1, this.bassPulseEnvelope) * volumeFactor;
