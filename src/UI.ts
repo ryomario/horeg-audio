@@ -8,6 +8,7 @@ export interface UIEvents {
   onNextClick: () => void;
   onSeek: (seconds: number) => void;
   onVolumeChange: (volume: number) => void;
+  onBassChange?: (bassLevel: number) => void;
   onMuteToggle: () => void;
   onShuffleToggle: () => void;
   onLoopToggle: () => void;
@@ -15,6 +16,11 @@ export interface UIEvents {
   onAddTrackFiles?: (files: File[]) => void;
   onAddTrackUrl?: (url: string, title?: string, artist?: string) => void;
   onRemoveTrack?: (index: number) => void;
+}
+
+export interface UIOptions {
+  enableBassControl?: boolean;
+  initialBass?: number;
 }
 
 export class UI {
@@ -47,6 +53,15 @@ export class UI {
   private volumeWrap: HTMLElement;
   private volumeDropup: HTMLElement;
   private volumePercentEl: HTMLElement;
+
+  private bassWrap: HTMLElement | null = null;
+  private bassBtn: HTMLButtonElement | null = null;
+  private bassDropup: HTMLElement | null = null;
+  private bassDbEl: HTMLElement | null = null;
+  private bassSlider: HTMLInputElement | null = null;
+  private megaBassBtn: HTMLButtonElement | null = null;
+  private currentBass: number = 0;
+
   private drawerEl: HTMLElement;
   private drawerCountEl: HTMLElement;
   private addTrackBtn: HTMLButtonElement;
@@ -68,8 +83,10 @@ export class UI {
   private currentDuration: number = 0;
   private events: UIEvents;
 
-  constructor(events: UIEvents) {
+  constructor(events: UIEvents, uiOptions?: UIOptions) {
     this.events = events;
+    const enableBass = uiOptions?.enableBassControl !== false;
+    this.currentBass = uiOptions?.initialBass !== undefined ? clamp(uiOptions.initialBass, -10, 15) : 0;
 
     // Create main player container
     this.root = createElement('div', { className: 'horeg-player-box' });
@@ -186,8 +203,62 @@ export class UI {
     centerControls.appendChild(this.nextBtn);
     controlsRow.appendChild(centerControls);
 
-    // Side right: Volume Dropup & Drawer toggle
+    // Side right: Bass Booster, Volume Dropup & Drawer toggle
     const rightControls = createElement('div', { className: 'horeg-side-controls' });
+
+    if (enableBass) {
+      this.bassWrap = createElement('div', { className: 'horeg-bass-wrap' });
+      this.bassBtn = createElement('button', {
+        className: `horeg-btn horeg-btn-bass ${this.currentBass !== 0 ? 'active' : ''}`,
+        attributes: {
+          'aria-label': `Bass: ${this.formatBassDb(this.currentBass)}`,
+          'data-tooltip': `Bass: ${this.formatBassDb(this.currentBass)}`,
+          type: 'button'
+        },
+        innerHTML: ICONS.bass
+      });
+      this.bassDropup = createElement('div', { className: 'horeg-bass-dropup' });
+
+      const bassHeader = createElement('div', { className: 'horeg-bass-header' });
+      const bassLabel = createElement('span', { className: 'horeg-bass-label', textContent: 'BASS' });
+      this.bassDbEl = createElement('span', {
+        className: `horeg-bass-db ${this.currentBass > 0 ? 'is-boosted' : this.currentBass < 0 ? 'is-cut' : ''} ${this.currentBass >= 10 ? 'is-horeg' : ''}`,
+        textContent: this.formatBassDb(this.currentBass)
+      });
+      bassHeader.appendChild(bassLabel);
+      bassHeader.appendChild(this.bassDbEl);
+
+      this.bassSlider = createElement('input', {
+        className: 'horeg-bass-slider-vertical',
+        attributes: {
+          type: 'range',
+          min: '-10',
+          max: '15',
+          step: '1',
+          value: this.currentBass.toString(),
+          orient: 'vertical',
+          'aria-label': 'Bass booster fader'
+        }
+      });
+
+      this.megaBassBtn = createElement('button', {
+        className: `horeg-btn-mega-bass ${this.currentBass >= 12 ? 'active' : ''}`,
+        attributes: {
+          type: 'button',
+          'aria-label': 'Toggle Mega Bass +12 dB',
+          'data-tooltip': 'Mega Bass (+12 dB)'
+        },
+        innerHTML: `<span class="horeg-mega-led"></span><span>MEGA</span>`
+      });
+
+      this.bassDropup.appendChild(bassHeader);
+      this.bassDropup.appendChild(this.bassSlider);
+      this.bassDropup.appendChild(this.megaBassBtn);
+
+      this.bassWrap.appendChild(this.bassBtn);
+      this.bassWrap.appendChild(this.bassDropup);
+      rightControls.appendChild(this.bassWrap);
+    }
     this.volumeWrap = createElement('div', { className: 'horeg-volume-wrap' });
     this.muteBtn = createElement('button', {
       className: 'horeg-btn',
@@ -336,6 +407,43 @@ export class UI {
       const percent = Math.round(val * 100);
       this.volumePercentEl.textContent = val === 0 ? 'MUTE' : `${percent}%`;
     });
+
+    if (this.bassSlider) {
+      this.bassSlider.addEventListener('input', () => {
+        const val = parseInt(this.bassSlider!.value, 10) || 0;
+        this.currentBass = val;
+        this.updateBass(val, false);
+        if (this.events.onBassChange) {
+          this.events.onBassChange(val);
+        }
+      });
+    }
+
+    if (this.megaBassBtn) {
+      this.megaBassBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetVal = this.currentBass >= 12 ? 0 : 12;
+        this.currentBass = targetVal;
+        this.updateBass(targetVal, true);
+        if (this.events.onBassChange) {
+          this.events.onBassChange(targetVal);
+        }
+      });
+    }
+
+    if (this.bassBtn && this.bassWrap) {
+      this.bassBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.bassWrap?.classList.toggle('open');
+      });
+
+      this.root.addEventListener('click', (e) => {
+        const path = e.composedPath ? e.composedPath() : [];
+        if (this.bassWrap && !path.includes(this.bassWrap)) {
+          this.bassWrap.classList.remove('open');
+        }
+      });
+    }
 
     this.drawerBtn.addEventListener('click', () => {
       this.toggleDrawer();
@@ -655,6 +763,35 @@ export class UI {
         this.muteBtn.innerHTML = ICONS.volumeHigh;
         this.muteBtn.setAttribute('aria-label', 'Volume high');
       }
+    }
+  }
+
+  public formatBassDb(db: number): string {
+    if (db > 0) return `+${db} dB`;
+    return `${db} dB`;
+  }
+
+  public updateBass(gainDb: number, updateSlider: boolean = true): void {
+    this.currentBass = clamp(gainDb, -10, 15);
+    const text = this.formatBassDb(this.currentBass);
+    if (this.bassDbEl) {
+      this.bassDbEl.textContent = text;
+      this.bassDbEl.classList.toggle('is-boosted', this.currentBass > 0);
+      this.bassDbEl.classList.toggle('is-cut', this.currentBass < 0);
+      this.bassDbEl.classList.toggle('is-horeg', this.currentBass >= 10);
+    }
+    if (updateSlider && this.bassSlider) {
+      this.bassSlider.value = this.currentBass.toString();
+    }
+    if (this.megaBassBtn) {
+      this.megaBassBtn.classList.toggle('active', this.currentBass >= 12);
+    }
+    if (this.bassBtn) {
+      this.bassBtn.classList.toggle('active', this.currentBass !== 0);
+      const isHoreg = this.currentBass >= 10;
+      const tooltipText = isHoreg ? `Bass: ${text} 🔥` : `Bass: ${text}`;
+      this.bassBtn.setAttribute('data-tooltip', tooltipText);
+      this.bassBtn.setAttribute('aria-label', tooltipText);
     }
   }
 

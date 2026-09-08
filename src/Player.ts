@@ -13,8 +13,10 @@ export class HoregAudio {
   private visualizer: Visualizer;
   private theme: HoregTheme;
   private boundKeyHandler: (e: KeyboardEvent) => void;
+  private onBassChangeCallback?: (bassLevel: number) => void;
 
   constructor(options: HoregPlayerOptions) {
+    this.onBassChangeCallback = options.onBassChange;
     if (typeof options.container === 'string') {
       const el = document.querySelector(options.container);
       if (!el) {
@@ -49,6 +51,7 @@ export class HoregAudio {
       onNextClick: () => this.next(),
       onSeek: (seconds) => this.seek(seconds),
       onVolumeChange: (vol) => this.setVolume(vol),
+      onBassChange: (db) => this.setBass(db),
       onMuteToggle: () => {
         const isMuted = this.audioEngine.toggleMute();
         this.ui.updateVolume(this.audioEngine.getVolume(), isMuted);
@@ -76,6 +79,9 @@ export class HoregAudio {
       onRemoveTrack: (index) => {
         this.removeTrack(index);
       }
+    }, {
+      enableBassControl: options.enableBassControl !== false,
+      initialBass: options.bassBoost !== undefined ? options.bassBoost : 0
     });
 
     this.shadow.appendChild(this.ui.root);
@@ -132,6 +138,7 @@ export class HoregAudio {
 
     // Initial states
     this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted());
+    this.ui.updateBass(this.audioEngine.getBassGain());
     this.ui.updateLoopState(this.audioEngine.getLoop());
     this.ui.updateShuffleState(this.audioEngine.isShuffle());
     this.ui.renderPlaylist(this.audioEngine.getPlaylist(), this.audioEngine.getCurrentIndex());
@@ -215,6 +222,19 @@ export class HoregAudio {
   public setVolume(level: number): void {
     this.audioEngine.setVolume(level);
     this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted());
+  }
+
+  public setBass(gainDb: number): void {
+    const clamped = Math.max(-10, Math.min(15, gainDb));
+    this.audioEngine.setBassGain(clamped);
+    this.ui.updateBass(clamped);
+    if (this.onBassChangeCallback) {
+      this.onBassChangeCallback(clamped);
+    }
+  }
+
+  public getBass(): number {
+    return this.audioEngine.getBassGain();
   }
 
   public loadTrack(indexOrTrack: number | Track, autoPlay: boolean = false): void {

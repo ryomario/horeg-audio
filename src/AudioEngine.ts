@@ -32,9 +32,11 @@ export class AudioEngine {
 
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
+  private bassFilter: BiquadFilterNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private freqData: Uint8Array | null = null;
   private webAudioInitialized: boolean = false;
+  private currentBassGain: number = 0;
   private bassRollingAvg: number = 0.2;
   private bassPulseEnvelope: number = 0;
 
@@ -46,6 +48,7 @@ export class AudioEngine {
     this.loopMode = options.loop || 'all';
     this.shuffleMode = !!options.shuffle;
     this.volumeLevel = options.volume !== undefined ? clamp(options.volume, 0, 1) : 0.8;
+    this.currentBassGain = options.bassBoost !== undefined ? clamp(options.bassBoost, -10, 15) : 0;
     this.callbacks = callbacks || {
       onPlay: options.onPlay,
       onPause: options.onPause,
@@ -345,8 +348,13 @@ export class AudioEngine {
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 128;
       this.analyser.smoothingTimeConstant = 0.65;
+      this.bassFilter = this.audioContext.createBiquadFilter();
+      this.bassFilter.type = 'lowshelf';
+      this.bassFilter.frequency.value = 120;
+      this.bassFilter.gain.value = this.currentBassGain;
       this.sourceNode = this.audioContext.createMediaElementSource(this.audio);
-      this.sourceNode.connect(this.analyser);
+      this.sourceNode.connect(this.bassFilter);
+      this.bassFilter.connect(this.analyser);
       this.analyser.connect(this.audioContext.destination);
       this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
       this.webAudioInitialized = true;
@@ -433,8 +441,10 @@ export class AudioEngine {
       const beatInterval = 60 / tempo;
       const beatPhase = (t % beatInterval) / beatInterval;
       const kickEnvelope = Math.pow(Math.max(0, 1 - beatPhase * 2.2), 3.2);
-
-      const bass = clamp(Math.max(0.12, kickEnvelope), 0, 1) * volumeFactor;
+      const bassGainMultiplier = Math.pow(10, this.currentBassGain / 20);
+      const scaledEnvelope = kickEnvelope * Math.min(2.5, Math.max(0.4, bassGainMultiplier));
+      const minBassFloor = this.currentBassGain < -5 ? 0.05 : 0.12;
+      const bass = clamp(Math.max(minBassFloor, scaledEnvelope), 0, 1) * volumeFactor;
       const midHigh = clamp(Math.sin(t * 8) * 0.25 + 0.35 + kickEnvelope * 0.25, 0, 1) * volumeFactor;
 
       return {
@@ -561,11 +571,37 @@ export class AudioEngine {
     this.callbacks = { ...this.callbacks, ...callbacks };
   }
 
+  public setBassGain(gainDb: number, transitionDuration: number = 0.05): void {
+    this.currentBassGain = clamp(gainDb, -10, 15);
+    if (this.bassFilter && this.audioContext && this.audioContext.state !== 'closed') {
+      try {
+        const currentTime = this.audioContext.currentTime;
+        if (typeof this.bassFilter.gain.setTargetAtTime === 'function') {
+          this.bassFilter.gain.setTargetAtTime(this.currentBassGain, currentTime, transitionDuration);
+        } else {
+          this.bassFilter.gain.value = this.currentBassGain;
+        }
+      } catch {
+        this.bassFilter.gain.value = this.currentBassGain;
+      }
+    }
+  }
+
+  public getBassGain(): number {
+    return this.currentBassGain;
+  }
+
   public destroy(): void {
     this.detachEvents();
     this.audio.pause();
     this.audio.src = '';
     this.audio.load();
+    if (this.bassFilter) {
+      try {
+        this.bassFilter.disconnect();
+      } catch {}
+      this.bassFilter = null;
+    }
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(() => {});
     }

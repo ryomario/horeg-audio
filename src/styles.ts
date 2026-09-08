@@ -1129,6 +1129,220 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       cursor: pointer;
     }
 
+    /* Vertical Bass Booster Dropup Mixer */
+    .horeg-bass-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Suppress bass button tooltip when dropup is active */
+    .horeg-bass-wrap:hover .horeg-btn[data-tooltip]::before,
+    .horeg-bass-wrap:hover .horeg-btn[data-tooltip]::after,
+    .horeg-bass-wrap:focus-within .horeg-btn[data-tooltip]::before,
+    .horeg-bass-wrap:focus-within .horeg-btn[data-tooltip]::after,
+    .horeg-bass-wrap.open .horeg-btn[data-tooltip]::before,
+    .horeg-bass-wrap.open .horeg-btn[data-tooltip]::after {
+      display: none;
+    }
+
+    .horeg-bass-dropup {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: ${isLight ? '#ffffff' : 'var(--horeg-surface)'};
+      border: 1px solid var(--horeg-border);
+      border-radius: 10px;
+      padding: 8px 8px 7px 8px;
+      box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.6), 0 0 10px -2px var(--horeg-glow);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      width: 48px;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.18s ease;
+      z-index: 40;
+    }
+
+    /* Dropup hover bridge */
+    .horeg-bass-dropup::before {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: -8px;
+      right: -8px;
+      height: 12px;
+      background: transparent;
+    }
+
+    /* Dropup arrow pointer */
+    .horeg-bass-dropup::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 5px 5px 0 5px;
+      border-style: solid;
+      border-color: ${isLight ? '#ffffff' : 'var(--horeg-surface)'} transparent transparent transparent;
+    }
+
+    .horeg-bass-wrap:hover .horeg-bass-dropup,
+    .horeg-bass-wrap:focus-within .horeg-bass-dropup,
+    .horeg-bass-wrap.open .horeg-bass-dropup {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .horeg-bass-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      width: 100%;
+    }
+
+    .horeg-bass-label {
+      font-size: 8px;
+      font-weight: 800;
+      color: var(--horeg-text-muted);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    .horeg-bass-db {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--horeg-text-main);
+      font-family: ui-monospace, monospace;
+      letter-spacing: 0.2px;
+      user-select: none;
+      text-align: center;
+      line-height: 1.1;
+      transition: color 0.15s ease, text-shadow 0.15s ease;
+    }
+
+    .horeg-bass-db.is-boosted {
+      color: var(--horeg-glow);
+      text-shadow: 0 0 6px rgba(var(--horeg-glow-rgb), 0.5);
+    }
+
+    .horeg-bass-db.is-cut {
+      color: var(--horeg-text-muted);
+      opacity: 0.8;
+    }
+
+    .horeg-bass-db.is-horeg {
+      color: var(--horeg-accent);
+      text-shadow: 0 0 8px var(--horeg-accent);
+      font-weight: 800;
+    }
+
+    .horeg-bass-slider-vertical {
+      -webkit-appearance: slider-vertical;
+      appearance: slider-vertical;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      width: 8px;
+      height: 84px;
+      background: var(--horeg-slider-bg);
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      margin: 0 auto;
+    }
+
+    .horeg-bass-slider-vertical::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--horeg-glow);
+      border: 2px solid ${isLight ? '#ffffff' : '#18181b'};
+      box-shadow: 0 0 6px var(--horeg-glow);
+      cursor: pointer;
+      transition: transform 0.1s ease;
+    }
+
+    .horeg-bass-slider-vertical::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .horeg-bass-slider-vertical::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--horeg-glow);
+      border: 2px solid ${isLight ? '#ffffff' : '#18181b'};
+      box-shadow: 0 0 6px var(--horeg-glow);
+      cursor: pointer;
+    }
+
+    /* Mega Bass / Horeg Boost Toggle Button */
+    .horeg-btn-mega-bass {
+      background: ${isLight ? '#f1f5f9' : '#181920'};
+      border: 1px solid var(--horeg-border);
+      border-radius: 4px;
+      padding: 2px 4px;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: var(--horeg-text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      width: 100%;
+      transition: all 0.15s ease;
+      outline: none;
+    }
+
+    .horeg-btn-mega-bass:hover {
+      color: var(--horeg-text-main);
+      border-color: var(--horeg-glow);
+    }
+
+    .horeg-btn-mega-bass .horeg-mega-led {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #52525b;
+      transition: all 0.2s ease;
+    }
+
+    .horeg-btn-mega-bass.active {
+      background: ${isLight ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.18)'};
+      border-color: var(--horeg-accent);
+      color: var(--horeg-accent);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+    }
+
+    .horeg-btn-mega-bass.active .horeg-mega-led {
+      background: var(--horeg-accent);
+      box-shadow: 0 0 6px var(--horeg-accent);
+      animation: ledPulse 1.5s infinite ease-in-out;
+    }
+
+    @keyframes ledPulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.5;
+        transform: scale(1.3);
+      }
+    }
+
     /* Drag Over Highlight on main player */
     .horeg-player-box.drag-over {
       border-color: var(--horeg-glow);

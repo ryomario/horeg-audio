@@ -202,6 +202,12 @@
         <button class="api-btn" id="api-seek">player.seek(5)</button>
         <button class="api-btn" id="api-vol-up">Vol +10%</button>
         <button class="api-btn" id="api-vol-down">Vol -10%</button>
+        <button class="api-btn" id="api-bass-cut" style="color: #94a3b8; border-color: rgba(148,163,184,0.5);">Bass -10 dB</button>
+        <button class="api-btn" id="api-bass-flat" style="color: #38bdf8; border-color: rgba(56,189,248,0.5);">Bass 0 dB</button>
+        <button class="api-btn" id="api-bass-boost" style="color: #f59e0b; border-color: rgba(245,158,11,0.5);">Bass +6 dB</button>
+        <button class="api-btn" id="api-bass-horeg" style="color: #ef4444; border-color: rgba(239,68,68,0.5);">🔥 Bass +12 dB (Horeg)</button>
+        <button class="api-btn" id="api-bass-max" style="color: #dc2626; border-color: rgba(220,38,38,0.5);">⚡ Bass +15 dB (Max)</button>
+        <button class="api-btn" id="api-bass-get">player.getBass()</button>
         <button class="api-btn" id="api-add-url" style="color: #f59e0b; border-color: rgba(245,158,11,0.5);">➕ Add URL Track</button>
         <label class="api-btn" style="color: #06b6d4; border-color: rgba(6,182,212,0.5); cursor: pointer; display: inline-flex; align-items: center;">
           📁 Add Local File
@@ -340,6 +346,7 @@
       onPlay: (t) => log(`▶ Playing: "${t.title}"`),
       onPause: () => log(`⏸ Paused`),
       onTrackChange: (t, idx) => log(`🔄 Track #${idx + 1}: "${t.title}"`),
+      onBassChange: (db) => log(`🎛️ Bass Changed: ${db > 0 ? '+' : ''}${db} dB ${db >= 10 ? '🔥 HOREG' : ''}`),
       onEnded: (t) => log(`🏁 Ended: "${t.title}"`),
       onError: (err) => log(`⚠️ Error: ${err.message || 'playback error'}`)
     });
@@ -454,6 +461,27 @@
       currentVol = Math.max(0, currentVol - 0.1);
       player.setVolume(currentVol);
       log(`🔉 Volume: ${Math.round(currentVol * 100)}%`);
+    });
+
+    // Bass Test API
+    document.getElementById('api-bass-cut').addEventListener('click', () => {
+      player.setBass(-10);
+    });
+    document.getElementById('api-bass-flat').addEventListener('click', () => {
+      player.setBass(0);
+    });
+    document.getElementById('api-bass-boost').addEventListener('click', () => {
+      player.setBass(6);
+    });
+    document.getElementById('api-bass-horeg').addEventListener('click', () => {
+      player.setBass(12);
+    });
+    document.getElementById('api-bass-max').addEventListener('click', () => {
+      player.setBass(15);
+    });
+    document.getElementById('api-bass-get').addEventListener('click', () => {
+      const b = player.getBass();
+      log(`🎚️ Active Bass Gain: ${b > 0 ? '+' : ''}${b} dB`);
     });
 
     // Add URL track demo

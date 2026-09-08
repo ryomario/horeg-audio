@@ -41,6 +41,8 @@ export interface HoregPlayerOptions {
   loop?: LoopMode;
   shuffle?: boolean;
   volume?: number; // 0.0 to 1.0
+  bassBoost?: number; // Initial dB value (default: 0, range: -10 to 15)
+  enableBassControl?: boolean; // Show/hide UI bass control (default: true)
   maxWidth?: number | string; // Optional container max-width (number in px or CSS string). If not set, container is fluid.
   theme?: HoregTheme;
   onPlay?: (track: Track) => void;
@@ -48,6 +50,7 @@ export interface HoregPlayerOptions {
   onTrackChange?: (track: Track, index: number) => void;
   onPlaylistChange?: (playlist: Track[], currentIndex: number) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
+  onBassChange?: (bassLevel: number) => void;
   onEnded?: (track: Track) => void;
   onError?: (error: MediaError | Error) => void;
 }
@@ -59,6 +62,7 @@ export interface HoregPlayerState {
   currentTime: number;
   duration: number;
   volume: number;
+  bassBoost: number;
   isMuted: boolean;
   loop: LoopMode;
   shuffle: boolean;
