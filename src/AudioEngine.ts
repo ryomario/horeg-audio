@@ -18,6 +18,7 @@ export interface AudioEnergy {
   midHigh: number;
   left: number;
   right: number;
+  bassDb?: number;
 }
 
 export class AudioEngine {
@@ -34,15 +35,13 @@ export class AudioEngine {
   private analyser: AnalyserNode | null = null;
   private bassFilter: BiquadFilterNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
-  private freqData: Uint8Array | null = null;
+  private floatFreqData: Float32Array | null = null;
   private webAudioInitialized: boolean = false;
   private currentBassGain: number = 0;
-  private bassRollingAvg: number = 0.2;
   private bassPulseEnvelope: number = 0;
 
   constructor(options: HoregPlayerOptions, callbacks: AudioEngineCallbacks = {}) {
     this.audio = new Audio();
-    this.audio.crossOrigin = 'anonymous';
     this.playlist = [...(options.playlist || [])];
     this.currentIndex = options.initialIndex !== undefined ? clamp(options.initialIndex, 0, Math.max(0, this.playlist.length - 1)) : 0;
     this.loopMode = options.loop || 'all';
@@ -314,6 +313,24 @@ export class AudioEngine {
 
     if (!track) return;
 
+    // Set crossOrigin appropriately:
+    // blob: and data: URLs should NOT have crossOrigin attribute set, as doing so can trigger
+    // CORS errors and cause Web Audio createMediaElementSource to produce 0s (silenced).
+    const isBlobOrData = track.src.startsWith('blob:') || track.src.startsWith('data:');
+    let isCrossDomain = false;
+    try {
+      if (typeof window !== 'undefined' && window.location && !isBlobOrData) {
+        const url = new URL(track.src, window.location.href);
+        isCrossDomain = url.origin !== window.location.origin;
+      }
+    } catch (_) {}
+
+    if (isCrossDomain) {
+      this.audio.crossOrigin = 'anonymous';
+    } else {
+      this.audio.removeAttribute('crossorigin');
+    }
+
     this.audio.src = track.src;
 
     if (this.callbacks.onTrackChange) {
@@ -327,6 +344,11 @@ export class AudioEngine {
 
   public async play(): Promise<void> {
     this.initWebAudio();
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+      } catch (_) {}
+    }
     try {
       await this.audio.play();
     } catch (err) {
@@ -346,8 +368,8 @@ export class AudioEngine {
       if (!AudioCtx) return;
       this.audioContext = new AudioCtx();
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 128;
-      this.analyser.smoothingTimeConstant = 0.65;
+      this.analyser.fftSize = 256;
+      this.analyser.smoothingTimeConstant = 0.25;
       this.bassFilter = this.audioContext.createBiquadFilter();
       this.bassFilter.type = 'lowshelf';
       this.bassFilter.frequency.value = 120;
@@ -356,78 +378,94 @@ export class AudioEngine {
       this.sourceNode.connect(this.bassFilter);
       this.bassFilter.connect(this.analyser);
       this.analyser.connect(this.audioContext.destination);
-      this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+      this.floatFreqData = new Float32Array(this.analyser.frequencyBinCount);
       this.webAudioInitialized = true;
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
     } catch (e) {
+      console.warn('[HoregAudio] Web Audio initialization notice:', e);
       this.webAudioInitialized = true;
     }
   }
 
   public getAudioEnergy(): AudioEnergy {
     if (!this.isPlaying()) {
-      return { bass: 0, midHigh: 0, left: 0, right: 0 };
+      return { bass: 0, midHigh: 0, left: 0, right: 0, bassDb: -100 };
     }
 
     const volumeFactor = this.isMuted() ? 0 : Math.max(0.35, Math.sqrt(this.volumeLevel));
 
     // 1. Try reading from AnalyserNode
-    if (this.analyser && this.freqData && this.audioContext && this.audioContext.state === 'running') {
+    if (this.analyser && this.floatFreqData && this.audioContext && this.audioContext.state === 'running') {
       try {
-        (this.analyser as any).getByteFrequencyData(this.freqData);
-        let sumBass = 0;
-        const bassBins = Math.min(4, this.freqData.length);
-        for (let i = 0; i < bassBins; i++) {
-          sumBass += this.freqData[i];
-        }
-        let sumMid = 0;
-        const midBins = Math.min(16, this.freqData.length);
-        for (let i = bassBins; i < midBins; i++) {
-          sumMid += this.freqData[i];
+        // Read uncompressed, real-time decibel (dBFS) levels for each frequency bin
+        this.analyser.getFloatFrequencyData(this.floatFreqData as any);
+
+        // 1. Sub-Bass & Kick Drum Decibels:
+        // Bin 0 covers ~0 to 172 Hz (deep sub-bass, 808s, and kick fundamental)
+        // Bin 1 covers ~172 to 345 Hz (low punch)
+        const b0 = Number.isFinite(this.floatFreqData[0]) ? this.floatFreqData[0] : -100;
+        const b1 = Number.isFinite(this.floatFreqData[1]) ? this.floatFreqData[1] : -100;
+        const currentBassDb = Math.max(b0, b1 - 3);
+
+        // 2. Mid and vocal frequencies in dBFS: bins 3 to 22 (~500 to 3800 Hz)
+        let maxMidDb = -100;
+        for (let i = 3; i < 22; i++) {
+          const val = this.floatFreqData[i];
+          if (Number.isFinite(val) && val > maxMidDb) {
+            maxMidDb = val;
+          }
         }
 
-        const rawBass = sumBass / (bassBins * 255);
-        const rawMid = sumMid / ((midBins - bassBins) * 255);
-
-        // If audio is silent or below noise floor, energy MUST be 0
-        if (rawBass < 0.025 && rawMid < 0.025) {
+        // Complete silence or below noise floor (< -75 dBFS)
+        if (currentBassDb < -75 && maxMidDb < -75) {
           this.bassPulseEnvelope *= 0.5;
-          if (this.bassPulseEnvelope < 0.01) this.bassPulseEnvelope = 0;
+          if (this.bassPulseEnvelope < 0.005) this.bassPulseEnvelope = 0;
           return {
             bass: 0,
             midHigh: 0,
             left: 0,
-            right: 0
+            right: 0,
+            bassDb: -100
           };
         }
 
-        const soundEnergy = Math.max(rawBass, rawMid * 0.7);
+        // DECIBEL-BASED BASS DETECTION & EXCURSION:
+        // Audible bass starts above -42 dBFS. Anything below -42 dBFS is sub-bass floor/silence.
+        // Powerful bass drops and heavy kick punches typically hit between -22 dBFS and -8 dBFS.
+        const BASS_CUTOFF_DB = -42;
+        const BASS_MAX_DB = -10;
+        const isBassActive = currentBassDb > BASS_CUTOFF_DB;
+        let instantBass = 0;
 
-        // 1. Direct sustained bass presence (so rolling basslines/continuous notes don't vanish)
-        const sustainedBass = rawBass * 0.75;
+        if (isBassActive) {
+          // Map the dB level (-42 dBFS to -10 dBFS) smoothly to physical excursion
+          const dbRatio = clamp((currentBassDb - BASS_CUTOFF_DB) / (BASS_MAX_DB - BASS_CUTOFF_DB), 0, 1);
+          instantBass = Math.min(1.0, Math.pow(dbRatio, 0.70) * 1.15);
+        } else {
+          // Stagnant small radius during non-bass sections (< -42 dBFS)
+          instantBass = 0.015;
+        }
 
-        // 2. Adaptive transient beat detection for kick punch
-        this.bassRollingAvg = this.bassRollingAvg * 0.92 + rawBass * 0.08;
-        const delta = Math.max(0, rawBass - this.bassRollingAvg);
-        const transientKick = delta > 0.006 ? Math.min(1, delta * 4.5 + 0.30 + rawBass * 0.35) : 0;
-
-        // 3. Dynamic minimal pulse (keeps subwoofer breathing/pulsing while music is sounding)
-        const t = this.audio.currentTime > 0 ? this.audio.currentTime : Date.now() / 1000;
-        const microPulse = (Math.sin(t * 13) * 0.5 + 0.5) * 0.08 * Math.min(1, soundEnergy * 2.5);
-        const minPulse = 0.09 * Math.min(1, soundEnergy * 3.0) + microPulse;
-
-        // Target bass combines transient kick, sustained bass, and guaranteed minimal pulse
-        const instantTarget = Math.max(transientKick, sustainedBass, minPulse);
-
-        // Fast attack, smooth decay that never drops below active minimal pulse
-        this.bassPulseEnvelope = Math.max(instantTarget, this.bassPulseEnvelope * 0.82);
+        // Fast attack (instant snap on kick hit), snappy release (bounce back between beats)
+        if (instantBass > this.bassPulseEnvelope) {
+          this.bassPulseEnvelope = instantBass;
+        } else {
+          // Exponential decay per frame (~120ms snap back to rest)
+          this.bassPulseEnvelope = Math.max(0.015, this.bassPulseEnvelope * 0.76);
+        }
 
         const bassVal = Math.min(1, this.bassPulseEnvelope) * volumeFactor;
-        const midVal = Math.min(1, rawMid * 1.3) * volumeFactor;
+        // Satellites for mid/highs: mapped from -55 dBFS to -18 dBFS
+        const midRatio = clamp((maxMidDb - (-55)) / ((-18) - (-55)), 0, 1);
+        const midVal = midRatio * volumeFactor;
         return {
           bass: bassVal,
           midHigh: midVal,
-          left: midVal * 0.9,
-          right: midVal * 0.95
+          left: midVal * 0.85,
+          right: midVal * 0.90,
+          bassDb: Math.round(currentBassDb * 10) / 10
         };
       } catch (_) {
         // Fall through to fallback ONLY if analyser threw an error
@@ -440,10 +478,10 @@ export class AudioEngine {
       const tempo = 130;
       const beatInterval = 60 / tempo;
       const beatPhase = (t % beatInterval) / beatInterval;
-      const kickEnvelope = Math.pow(Math.max(0, 1 - beatPhase * 2.2), 3.2);
+      const kickEnvelope = Math.pow(Math.max(0, 1 - beatPhase * 2.4), 3.2);
       const bassGainMultiplier = Math.pow(10, this.currentBassGain / 20);
       const scaledEnvelope = kickEnvelope * Math.min(2.5, Math.max(0.4, bassGainMultiplier));
-      const minBassFloor = this.currentBassGain < -5 ? 0.05 : 0.12;
+      const minBassFloor = 0.03;
       const bass = clamp(Math.max(minBassFloor, scaledEnvelope), 0, 1) * volumeFactor;
       const midHigh = clamp(Math.sin(t * 8) * 0.25 + 0.35 + kickEnvelope * 0.25, 0, 1) * volumeFactor;
 
@@ -451,11 +489,12 @@ export class AudioEngine {
         bass,
         midHigh,
         left: midHigh * 0.85,
-        right: midHigh * 0.9
+        right: midHigh * 0.9,
+        bassDb: -20
       };
     }
 
-    return { bass: 0, midHigh: 0, left: 0, right: 0 };
+    return { bass: 0, midHigh: 0, left: 0, right: 0, bassDb: -100 };
   }
 
   public pause(): void {

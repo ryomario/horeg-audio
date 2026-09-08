@@ -1,6 +1,6 @@
 import { HoregPlayerOptions, HoregTheme, Track, LoopMode } from './types';
 import { generateStyles, THEME_PRESETS } from './styles';
-import { AudioEngine } from './AudioEngine';
+import { AudioEngine, AudioEnergy } from './AudioEngine';
 import { UI } from './UI';
 import { Visualizer } from './visualizer';
 
@@ -395,6 +395,10 @@ export class HoregAudio {
 
   public getAudioEngine(): AudioEngine {
     return this.audioEngine;
+  }
+
+  public getAudioEnergy(): AudioEnergy {
+    return this.audioEngine.getAudioEnergy();
   }
 
   public destroy(): void {

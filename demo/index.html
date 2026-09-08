@@ -216,6 +216,18 @@
         <button class="api-btn" id="api-remove-last" style="color: #ef4444; border-color: rgba(239,68,68,0.5);">🗑️ Remove Last</button>
       </div>
 
+      <!-- Real-time Decibel Monitor -->
+      <div style="margin-top: 14px; background: #0b0c12; border: 1px solid #1e202e; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 11px;">
+        <div>
+          <span style="color: #71717a;">BASS SPECTRUM (0-170Hz):</span>
+          <span id="meter-db" style="color: #f59e0b; font-weight: 700; margin-left: 6px;">-∞ dBFS</span>
+        </div>
+        <div>
+          <span style="color: #71717a;">STATUS:</span>
+          <span id="meter-status" style="color: #6b7280; font-weight: 700; margin-left: 6px;">IDLE / STAGNANT</span>
+        </div>
+      </div>
+
       <div class="event-log" id="event-log">
         [Ready] HoregAudio instance initialized.
       </div>
@@ -229,9 +241,9 @@
   <script type="module">
     import { HoregAudio } from '../src/index.ts';
 
-    // Helper: generate distinct audio tracks with different rhythms and frequencies
-    function createSynthesizedAudioDataUrl(tempo, freq, style = 'bass', durationSec = 10) {
-      const sampleRate = 22050;
+    // Helper: generate distinct high-fidelity audio tracks with authentic sound horeg kicks and deep sub-bass
+    function createSynthesizedAudioDataUrl(tempo = 130, freq = 55, style = 'drop', durationSec = 14) {
+      const sampleRate = 44100;
       const numSamples = Math.floor(sampleRate * durationSec);
       const buffer = new ArrayBuffer(44 + numSamples * 2);
       const view = new DataView(buffer);
@@ -257,35 +269,76 @@
       view.setUint32(40, numSamples * 2, true);
 
       const beatInterval = 60 / tempo;
+      let kickPhase = 0;
+      let subPhase = 0;
+      let leadPhase = 0;
+      let prevBeatIdx = -1;
+
       for (let i = 0; i < numSamples; i++) {
         const t = i / sampleRate;
-        const beatPhase = (t % beatInterval) / beatInterval;
-        const kickEnv = Math.exp(-beatPhase * 16);
-        const kickPitch = (style === 'lead' ? 90 : 50) + 140 * kickEnv;
-        const kick = Math.sin(2 * Math.PI * kickPitch * beatPhase * beatInterval) * kickEnv;
+        const currentBeatIdx = Math.floor(t / beatInterval);
+        const beatTime = t % beatInterval;
+        const beatPhase = beatTime / beatInterval;
 
-        let melodic = 0;
-        if (style === 'lead') {
-          // Arpeggiator
-          const noteIndex = Math.floor((t / (beatInterval / 2)) % 4);
-          const noteFreq = freq * [1, 1.25, 1.5, 1.875][noteIndex];
-          melodic = Math.sin(2 * Math.PI * noteFreq * t) * 0.35;
-        } else {
-          // Deep Bass Sweep
-          melodic = Math.sin(2 * Math.PI * freq * t) * 0.45;
+        if (currentBeatIdx !== prevBeatIdx) {
+          kickPhase = 0;
+          prevBeatIdx = currentBeatIdx;
         }
 
-        const sample = Math.max(-1, Math.min(1, kick * 0.65 + melodic));
-        view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        // Determine if bass is enabled:
+        // 'drop': 0 to 4s is intro melody without bass, 4s+ is massive bass drop!
+        // 'nobass' or 'lead': pure melody without kick/bass
+        // 'bass' or 'heavy': continuous heavy bass
+        let bassEnabled = true;
+        if (style === 'nobass' || style === 'lead') {
+          bassEnabled = false;
+        } else if (style === 'drop' && t < 4.0) {
+          bassEnabled = false;
+        }
+
+        // 1. Heavy Punchy Sub Kick (808 Horeg Style)
+        let kick = 0;
+        if (bassEnabled) {
+          // Sweep from 160 Hz down to 48 Hz with punchy tail
+          const kickFreq = 48 + 112 * Math.exp(-beatPhase * 16);
+          kickPhase += (2 * Math.PI * kickFreq) / sampleRate;
+          const kickAmp = Math.exp(-beatPhase * 6.5);
+          const rawKick = Math.sin(kickPhase) * kickAmp * 1.4;
+          kick = Math.tanh(rawKick);
+        }
+
+        // 2. Rolling Deep Sub-Bass (50 - 65 Hz)
+        let sub = 0;
+        if (bassEnabled) {
+          const bassNote = [freq, freq, freq * 1.2, freq * 0.9][Math.floor(t * 2) % 4];
+          subPhase += (2 * Math.PI * bassNote) / sampleRate;
+          const ducking = Math.min(1, Math.pow(beatPhase, 0.6) * 1.6);
+          sub = Math.sin(subPhase) * 0.45 * ducking;
+        }
+
+        // 3. Melodic Lead Arpeggiator (Mids & Highs - always playing)
+        const arpNotes = [330, 392, 440, 523, 659];
+        const noteHz = arpNotes[Math.floor(t * 8) % arpNotes.length];
+        leadPhase += (2 * Math.PI * noteHz) / sampleRate;
+        const leadAmp = Math.exp(-(beatTime % (beatInterval / 2)) * 10);
+        const lead = Math.sin(leadPhase) * 0.22 * leadAmp;
+
+        // 4. Crisp Shaker / Hi-Hat
+        const hatTime = beatTime % (beatInterval / 2);
+        const hat = (Math.random() * 2 - 1) * Math.exp(-hatTime * 35) * 0.10;
+
+        const mix = kick * 0.72 + sub * 0.45 + lead * 0.35 + hat;
+        const master = Math.max(-0.99, Math.min(0.99, mix));
+        view.setInt16(44 + i * 2, master < 0 ? master * 0x8000 : master * 0x7FFF, true);
       }
 
       const blob = new Blob([buffer], { type: 'audio/wav' });
       return URL.createObjectURL(blob);
     }
 
-    const synthTrack1 = createSynthesizedAudioDataUrl(128, 65.4, 'bass', 12);  // Horeg Sub 65Hz
-    const synthTrack2 = createSynthesizedAudioDataUrl(150, 220.0, 'lead', 10); // Club Lead 220Hz
-    const synthTrack3 = createSynthesizedAudioDataUrl(115, 43.6, 'bass', 14);  // Earthquake Sub 43Hz
+    const synthTrack1 = createSynthesizedAudioDataUrl(130, 55, 'drop', 16);
+    const synthTrack2 = createSynthesizedAudioDataUrl(140, 440, 'nobass', 12);
+    const synthTrack3 = createSynthesizedAudioDataUrl(128, 50, 'heavy', 16);
 
     const logEl = document.getElementById('event-log');
     function log(msg) {
@@ -315,28 +368,28 @@
       playlist: [
         {
           id: 1,
-          title: 'Bass Horeg Jedag-Jedug Extreme Glerrr Sound System Karnaval Pati - Nonstop 130 BPM',
+          title: '🔥 Bass Drop Test: Intro 0-4s (Tanpa Bass) ➔ Detik 4: DROP BASS HOREG!',
           artist: 'DJ Riswanda Karnaval Pati',
           album: 'Festival Sound Rig Pati 2026',
           coverArt: demoCover1,
           src: synthTrack1,
-          duration: 9.6
+          duration: 16.0
         },
         {
           id: 2,
-          title: 'Karnaval Audio Rig Battle Rembang-Pati',
-          artist: 'Brewog Audio Master',
-          album: 'Horeg Party Live 2026',
+          title: '❄️ Zero Bass Test: Melodi & Vokal Murni (Subwoofer Stagnan)',
+          artist: 'Brewog Acoustic Studio',
+          album: 'Clean Studio Live 2026',
           src: synthTrack2,
-          duration: 8.0
+          duration: 12.0
         },
         {
           id: 3,
-          title: 'Subwoofer Earthquake 18 Inch Monster Bass',
-          artist: 'Faskho Sengon Rig',
+          title: '⚡ Nonstop 18-Inch Subwoofer Horeg 130 BPM (Extreme Bass)',
+          artist: 'Faskho Sengon Rig Master',
           album: 'Mega Bass Volume 5',
           src: synthTrack3,
-          duration: 11.2
+          duration: 16.0
         }
       ],
       theme: {
@@ -518,6 +571,35 @@
         log(`⚠️ Playlist is already empty.`);
       }
     });
+
+    // Real-time Decibel Monitor Polling
+    setInterval(() => {
+      if (player && typeof player.getAudioEnergy === 'function') {
+        const energy = player.getAudioEnergy();
+        const dbEl = document.getElementById('meter-db');
+        const statusEl = document.getElementById('meter-status');
+        if (dbEl && statusEl && energy) {
+          const db = energy.bassDb;
+          if (db === undefined || db <= -70) {
+            dbEl.textContent = '-∞ dBFS';
+            dbEl.style.color = '#71717a';
+            statusEl.textContent = 'HENING / ZERO BASS (STAGNANT)';
+            statusEl.style.color = '#6b7280';
+          } else {
+            dbEl.textContent = `${db > 0 ? '+' : ''}${db.toFixed(1)} dBFS`;
+            if (db > -42) {
+              dbEl.style.color = '#ef4444';
+              statusEl.textContent = `🔥 BASS AKTIF (${db > -22 ? 'HEAVY PUNCH' : 'PUNCHING'}) > -42 dBFS`;
+              statusEl.style.color = '#ef4444';
+            } else {
+              dbEl.style.color = '#10b981';
+              statusEl.textContent = 'STAGNANT (MELODI / < -42 dBFS)';
+              statusEl.style.color = '#10b981';
+            }
+          }
+        }
+      }
+    }, 75);
   </script>
 </body>
 </html>

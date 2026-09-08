@@ -250,11 +250,11 @@ export class Visualizer {
     const targetLeft = energy.left < 0.01 ? 0 : energy.left;
     const targetRight = energy.right < 0.01 ? 0 : energy.right;
 
-    // Fast attack (snap to kick beat), smooth release for pronounced pumping
+    // Fast attack (snap to kick beat), fast bouncy release back to small rest radius
     if (targetBass > this.smoothBass) {
-      this.smoothBass += (targetBass - this.smoothBass) * 0.70;
+      this.smoothBass += (targetBass - this.smoothBass) * 0.85;
     } else {
-      this.smoothBass += (targetBass - this.smoothBass) * 0.25;
+      this.smoothBass += (targetBass - this.smoothBass) * 0.38;
     }
     if (this.smoothBass < 0.01) this.smoothBass = 0;
 
@@ -270,24 +270,24 @@ export class Visualizer {
   };
 
   private applyExcursion(bass: number, left: number, right: number): void {
-    // 1. Center Subwoofer (Excursion from 1.0 to 1.34)
-    const subScale = 1.0 + bass * 0.34;
+    // 1. Center Monster Subwoofer (Exclusively driven by Bass)
+    const subScale = 1.0 + bass * 0.42;
     this.subConeEl.style.transform = `scale(${subScale.toFixed(3)})`;
 
-    // Subwoofer cabinet swells gently with beat
-    const boxScale = 1.0 + bass * 0.04;
+    // Subwoofer cabinet only swells when real bass is actively punching
+    const boxScale = bass > 0.15 ? 1.0 + (bass - 0.15) * 0.08 : 1.0;
     this.subBoxEl.style.transform = `scale(${boxScale.toFixed(3)})`;
 
-    // Subwoofer Shockwaves: Trigger on strong bass hits/kicks (above minimal pulse level)
-    if (bass > 0.18) {
-      const shockPower = (bass - 0.18) / 0.82;
-      const waveScale1 = 1.0 + shockPower * 0.70;
-      const waveOpacity1 = Math.min(0.95, shockPower * 1.3);
+    // Subwoofer Shockwaves: Trigger strictly on real bass punch
+    if (bass > 0.16) {
+      const shockPower = (bass - 0.16) / 0.84;
+      const waveScale1 = 1.0 + shockPower * 0.85;
+      const waveOpacity1 = Math.min(0.95, shockPower * 1.6);
       this.shockwave1El.style.transform = `scale(${waveScale1.toFixed(3)})`;
       this.shockwave1El.style.opacity = waveOpacity1.toFixed(2);
 
-      const waveScale2 = 1.0 + shockPower * 1.10;
-      const waveOpacity2 = Math.max(0, (shockPower - 0.2) * 1.2);
+      const waveScale2 = 1.0 + shockPower * 1.25;
+      const waveOpacity2 = Math.max(0, (shockPower - 0.15) * 1.4);
       this.shockwave2El.style.transform = `scale(${waveScale2.toFixed(3)})`;
       this.shockwave2El.style.opacity = waveOpacity2.toFixed(2);
     } else {
@@ -298,18 +298,18 @@ export class Visualizer {
     }
 
     // 2. Left & Right Satellites (Cones excursion)
-    const leftScale = 1.0 + left * 0.10;
+    const leftScale = 1.0 + left * 0.08;
     if (this.leftTopDriverEl) this.leftTopDriverEl.style.transform = `scale(${leftScale.toFixed(3)})`;
     if (this.leftBottomDriverEl) this.leftBottomDriverEl.style.transform = `scale(${leftScale.toFixed(3)})`;
 
-    const rightScale = 1.0 + right * 0.10;
+    const rightScale = 1.0 + right * 0.08;
     if (this.rightTopDriverEl) this.rightTopDriverEl.style.transform = `scale(${rightScale.toFixed(3)})`;
     if (this.rightBottomDriverEl) this.rightBottomDriverEl.style.transform = `scale(${rightScale.toFixed(3)})`;
 
     // 3. Compact Water-like Ripples on the 4 Satellite Circles (2 Left, 2 Right)
     // Ripples expand subtly on a small radius and fade away cleanly
     const applyRipples = (ripples: HTMLElement[], intensity: number) => {
-      const hasSignal = intensity > 0.06;
+      const hasSignal = intensity > 0.12;
       for (let i = 0; i < ripples.length; i++) {
         const ripple = ripples[i];
         const isSecond = ripple.classList.contains('ripple-2');
