@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/ryomario/horeg-audio/issues"
   },
-  "homepage": "https://github.com/ryomario/horeg-audio#readme",
+  "homepage": "https://ryomario.github.io/horeg-audio/",
   "type": "module",
   "main": "./dist/horeg-audio.cjs",
   "module": "./dist/horeg-audio.js",

@@ -4,6 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/horeg-audio.svg?color=amber)](https://www.npmjs.com/package/horeg-audio)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/horeg-audio?color=green)](https://bundlephobia.com/package/horeg-audio)
+[![demo](https://img.shields.io/badge/demo-online-orange.svg)](https://ryomario.github.io/horeg-audio/)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 `horeg-audio` adalah library pemutar audio mandiri berbasis TypeScript murni (*zero runtime dependencies*) yang mengusung tema visual panggung **Sound System Horeg** (speaker subwoofer cabinet, neon glow, industrial mesh grill, dan dynamic EQ/VU-meter visualizer).
