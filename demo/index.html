@@ -589,7 +589,8 @@
             dbEl.textContent = `${db > 0 ? '+' : ''}${db.toFixed(1)} dBFS`;
             if (db > -42) {
               dbEl.style.color = '#ef4444';
-              statusEl.textContent = `🔥 BASS AKTIF (${db > -22 ? 'HEAVY PUNCH' : 'PUNCHING'}) > -42 dBFS`;
+              const punchStr = energy.bassPunch && energy.bassPunch > 0.08 ? ' • ⚡ IMPULSE' : '';
+              statusEl.textContent = `🔥 BASS AKTIF (${db > -22 ? 'HEAVY PUNCH' : 'PUNCHING'})${punchStr} > -42 dBFS`;
               statusEl.style.color = '#ef4444';
             } else {
               dbEl.style.color = '#10b981';

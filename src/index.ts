@@ -8,6 +8,7 @@ import { THEME_PRESETS, generateStyles } from './styles';
 (HoregAudio as any).generateStyles = generateStyles;
 
 export * from './types';
+export type { AudioEnergy } from './AudioEngine';
 export { HoregAudio, THEME_PRESETS, generateStyles };
 export default HoregAudio;
 

@@ -476,7 +476,7 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       align-items: center;
       justify-content: center;
       transform-origin: center center;
-      transition: transform 0.05s ease-out;
+      will-change: transform;
       box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
     }
 
@@ -501,7 +501,7 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
       z-index: 10 !important;
       position: relative;
-      transition: transform 0.04s ease-out, box-shadow 0.08s ease-out;
+      will-change: transform;
     }
 
     /* Concentric Bass Shockwaves */
@@ -527,7 +527,7 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       opacity: 0;
       transform-origin: center center;
       pointer-events: none;
-      transition: transform 0.05s ease-out, opacity 0.08s ease-out;
+      will-change: transform, opacity;
     }
 
     .horeg-shockwave.wave-1 {
@@ -606,6 +606,8 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       display: flex;
       align-items: center;
       justify-content: center;
+      transform-origin: center center;
+      will-change: transform;
       box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.7);
     }
 
@@ -618,7 +620,7 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       align-items: center;
       justify-content: center;
       transform-origin: center center;
-      transition: transform 0.05s ease-out;
+      will-change: transform, box-shadow;
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
     }
 

@@ -19,6 +19,7 @@ export interface AudioEnergy {
   left: number;
   right: number;
   bassDb?: number;
+  bassPunch?: number;
 }
 
 export class AudioEngine {
@@ -34,6 +35,8 @@ export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private bassFilter: BiquadFilterNode | null = null;
+  private headroomGain: GainNode | null = null;
+  private limiterNode: DynamicsCompressorNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private floatFreqData: Float32Array | null = null;
   private webAudioInitialized: boolean = false;
@@ -368,17 +371,40 @@ export class AudioEngine {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
       this.audioContext = new AudioCtx();
+
+      // Analyser with 512 FFT size (256 frequency bins, ~86 Hz per bin at 44.1kHz)
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 256;
-      this.analyser.smoothingTimeConstant = 0.25;
+      this.analyser.fftSize = 512;
+      this.analyser.smoothingTimeConstant = 0.20;
+
+      // Lowshelf filter at 110 Hz for authentic horeg sub-bass punch
       this.bassFilter = this.audioContext.createBiquadFilter();
       this.bassFilter.type = 'lowshelf';
-      this.bassFilter.frequency.value = 120;
+      this.bassFilter.frequency.value = 110;
       this.bassFilter.gain.value = this.currentBassGain;
+
+      // Headroom gain staging node: protects against digital clipping during heavy bass boost
+      this.headroomGain = this.audioContext.createGain();
+      this.applyHeadroom(0);
+
+      // Studio Brickwall Limiter (DynamicsCompressorNode):
+      // Provides an impenetrable ceiling right before output to guarantee 0% hard digital clipping/crackling
+      this.limiterNode = this.audioContext.createDynamicsCompressor();
+      this.limiterNode.threshold.value = -0.5; // catch peaks approaching 0 dBFS
+      this.limiterNode.knee.value = 3.0;       // smooth analog-style transition
+      this.limiterNode.ratio.value = 20.0;     // brickwall limiting
+      this.limiterNode.attack.value = 0.002;   // 2 ms instant clamp
+      this.limiterNode.release.value = 0.080;  // 80 ms fast transparent recovery
+
       this.sourceNode = this.audioContext.createMediaElementSource(this.audio);
+
+      // Graph: sourceNode -> bassFilter -> headroomGain -> analyser -> limiterNode -> destination
       this.sourceNode.connect(this.bassFilter);
-      this.bassFilter.connect(this.analyser);
-      this.analyser.connect(this.audioContext.destination);
+      this.bassFilter.connect(this.headroomGain);
+      this.headroomGain.connect(this.analyser);
+      this.analyser.connect(this.limiterNode);
+      this.limiterNode.connect(this.audioContext.destination);
+
       this.floatFreqData = new Float32Array(this.analyser.frequencyBinCount);
       this.webAudioInitialized = true;
       if (this.audioContext.state === 'suspended') {
@@ -392,7 +418,7 @@ export class AudioEngine {
 
   public getAudioEnergy(): AudioEnergy {
     if (!this.isPlaying()) {
-      return { bass: 0, midHigh: 0, left: 0, right: 0, bassDb: -100 };
+      return { bass: 0, midHigh: 0, left: 0, right: 0, bassDb: -100, bassPunch: 0 };
     }
 
     const volumeFactor = this.isMuted() ? 0 : Math.max(0.35, Math.sqrt(this.volumeLevel));
@@ -404,15 +430,15 @@ export class AudioEngine {
         this.analyser.getFloatFrequencyData(this.floatFreqData as any);
 
         // 1. Sub-Bass & Kick Drum Decibels:
-        // Bin 0 covers ~0 to 172 Hz (deep sub-bass, 808s, and kick fundamental)
-        // Bin 1 covers ~172 to 345 Hz (low punch)
+        // Bin 0 covers ~0 to 86 Hz (deep sub-bass, 808s, and kick fundamental)
+        // Bin 1 covers ~86 to 172 Hz (punch & attack body)
         const b0 = Number.isFinite(this.floatFreqData[0]) ? this.floatFreqData[0] : -100;
         const b1 = Number.isFinite(this.floatFreqData[1]) ? this.floatFreqData[1] : -100;
-        const currentBassDb = Math.max(b0, b1 - 3);
+        const currentBassDb = Math.max(b0, b1 - 2.5);
 
-        // 2. Mid and vocal frequencies in dBFS: bins 3 to 22 (~500 to 3800 Hz)
+        // 2. Mid and vocal frequencies in dBFS: bins 4 to 45 (~350 to 3870 Hz)
         let maxMidDb = -100;
-        for (let i = 3; i < 22; i++) {
+        for (let i = 4; i < 45 && i < this.floatFreqData.length; i++) {
           const val = this.floatFreqData[i];
           if (Number.isFinite(val) && val > maxMidDb) {
             maxMidDb = val;
@@ -428,47 +454,41 @@ export class AudioEngine {
             midHigh: 0,
             left: 0,
             right: 0,
-            bassDb: -100
+            bassDb: -100,
+            bassPunch: 0
           };
         }
 
-        // TRANSIENT ONSET VS SMOOTH SUSTAIN DETECTION:
-        // Ketukan (beats/kicks) produce a sharp positive jump in dB relative to the rolling floor.
-        // Smooth sustained bass (drones/long notes) has little to no onset delta.
+        // TRANSIENT ONSET DETECTION (BEAT ONSET SPIKES):
         if (currentBassDb < this.bassDbFloor) {
           this.bassDbFloor = currentBassDb;
         } else {
-          this.bassDbFloor = this.bassDbFloor * 0.84 + currentBassDb * 0.16;
+          this.bassDbFloor = this.bassDbFloor * 0.82 + currentBassDb * 0.18;
         }
         const dbOnset = Math.max(0, currentBassDb - this.bassDbFloor);
 
         // DECIBEL-BASED BASS DETECTION & EXCURSION:
-        // Audible bass starts above -42 dBFS. Anything below -42 dBFS is sub-bass floor/silence.
-        // Powerful bass drops and heavy kick punches typically hit between -22 dBFS and -8 dBFS.
         const BASS_CUTOFF_DB = -42;
         const BASS_MAX_DB = -10;
         const isBassActive = currentBassDb > BASS_CUTOFF_DB;
         let instantBass = 0;
+        let bassPunch = 0;
 
         if (isBassActive) {
           // Linear capacity of emitted dB between -42 dBFS (inaudible) and -10 dBFS (max drop)
           const dbCapacity = clamp((currentBassDb - BASS_CUTOFF_DB) / (BASS_MAX_DB - BASS_CUTOFF_DB), 0, 1);
-          // Transient onset ratio: how sharp the beat hit is
-          const onsetRatio = clamp(dbOnset / 16, 0, 1);
-          // Radius scale strictly bounded by the emitted dB capacity:
-          // Soft beats (e.g. -32 dB) produce small radius (0.20 - 0.25).
-          // Medium beats (e.g. -24 dB) produce medium radius (0.45 - 0.55).
-          // Heavy beats (e.g. -14 dB) produce punchy radius (0.75 - 0.85).
-          // Max drops (e.g. -10 dB) produce full radius (1.0).
-          instantBass = dbCapacity * (0.65 + 0.35 * onsetRatio);
+          const onsetRatio = clamp(dbOnset / 14, 0, 1);
+
+          // Kinetic kick punch impulse: only non-zero on sharp transient kicks (dbOnset > 2.0 dB)
+          bassPunch = dbOnset > 2.0 ? clamp((dbOnset - 2.0) / 10, 0, 1) * dbCapacity : 0;
+
+          // Excursion radius strictly bounded by emitted dB capacity
+          instantBass = dbCapacity * (0.60 + 0.40 * onsetRatio);
         } else {
-          // No sub-bass (< -42 dBFS), but audio/music IS playing (e.g. vocals, melody, acoustic):
-          // Provide a subtle, visible rhythmic breathing motion so the visualizer stays alive!
+          // Subtle rhythmic breathing during non-bass playback
           const t = this.audio.currentTime > 0 ? this.audio.currentTime : Date.now() / 1000;
           const cadence = Math.sin(t * 9) * 0.5 + 0.5;
-          // Music amplitude from mid frequencies (-60 dBFS to -18 dBFS)
           const musicPresence = clamp((maxMidDb - (-60)) / ((-18) - (-60)), 0, 1);
-          // Subtle breathing excursion (~0.015 to 0.040)
           instantBass = (0.012 + cadence * 0.028) * musicPresence;
         }
 
@@ -476,12 +496,10 @@ export class AudioEngine {
         if (instantBass > this.bassPulseEnvelope) {
           this.bassPulseEnvelope = instantBass;
         } else {
-          // Snappy decay per frame (~110ms snap back to baseline)
           this.bassPulseEnvelope = Math.max(instantBass, this.bassPulseEnvelope * 0.76);
         }
 
         const bassVal = Math.min(1, this.bassPulseEnvelope) * volumeFactor;
-        // Satellites for mid/highs: mapped from -55 dBFS to -18 dBFS
         const midRatio = clamp((maxMidDb - (-55)) / ((-18) - (-55)), 0, 1);
         const midVal = midRatio * volumeFactor;
         return {
@@ -489,7 +507,8 @@ export class AudioEngine {
           midHigh: midVal,
           left: midVal * 0.85,
           right: midVal * 0.90,
-          bassDb: Math.round(currentBassDb * 10) / 10
+          bassDb: Math.round(currentBassDb * 10) / 10,
+          bassPunch: bassPunch * volumeFactor
         };
       } catch (_) {
         // Fall through to fallback ONLY if analyser threw an error
@@ -514,11 +533,12 @@ export class AudioEngine {
         midHigh,
         left: midHigh * 0.85,
         right: midHigh * 0.9,
-        bassDb: -20
+        bassDb: -20,
+        bassPunch: kickEnvelope > 0.4 ? (kickEnvelope - 0.4) / 0.6 * volumeFactor : 0
       };
     }
 
-    return { bass: 0, midHigh: 0, left: 0, right: 0, bassDb: -100 };
+    return { bass: 0, midHigh: 0, left: 0, right: 0, bassDb: -100, bassPunch: 0 };
   }
 
   public pause(): void {
@@ -634,6 +654,22 @@ export class AudioEngine {
     this.callbacks = { ...this.callbacks, ...callbacks };
   }
 
+  private applyHeadroom(transitionDuration: number = 0.05): void {
+    if (!this.headroomGain || !this.audioContext || this.audioContext.state === 'closed') return;
+    try {
+      const currentTime = this.audioContext.currentTime;
+      // Headroom attenuation: when bass is boosted (> 0 dB), attenuate the master bus slightly (-0.28 dB per dB boost)
+      // This maintains the boosted bass prominence while completely preventing DAC/OS digital clipping!
+      const headroomDb = this.currentBassGain > 0 ? -this.currentBassGain * 0.28 : 0;
+      const targetGain = Math.pow(10, headroomDb / 20);
+      if (typeof this.headroomGain.gain.setTargetAtTime === 'function') {
+        this.headroomGain.gain.setTargetAtTime(targetGain, currentTime, transitionDuration);
+      } else {
+        this.headroomGain.gain.value = targetGain;
+      }
+    } catch {}
+  }
+
   public setBassGain(gainDb: number, transitionDuration: number = 0.05): void {
     this.currentBassGain = clamp(gainDb, -10, 15);
     if (this.bassFilter && this.audioContext && this.audioContext.state !== 'closed') {
@@ -648,6 +684,7 @@ export class AudioEngine {
         this.bassFilter.gain.value = this.currentBassGain;
       }
     }
+    this.applyHeadroom(transitionDuration);
   }
 
   public getBassGain(): number {
@@ -664,6 +701,18 @@ export class AudioEngine {
         this.bassFilter.disconnect();
       } catch {}
       this.bassFilter = null;
+    }
+    if (this.headroomGain) {
+      try {
+        this.headroomGain.disconnect();
+      } catch {}
+      this.headroomGain = null;
+    }
+    if (this.limiterNode) {
+      try {
+        this.limiterNode.disconnect();
+      } catch {}
+      this.limiterNode = null;
     }
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(() => {});
