@@ -165,7 +165,7 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
     ? '0 18px 44px -8px rgba(15, 23, 42, 0.18), 0 0 24px -2px var(--horeg-glow)'
     : '0 20px 48px -10px rgba(0, 0, 0, 0.95), 0 0 30px -2px var(--horeg-glow), 0 0 10px var(--horeg-glow)';
 
-  return `
+  return /* css */ `
     :host {
       display: block;
       width: 100%;

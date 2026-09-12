@@ -108,7 +108,7 @@ export class UI {
     const header = createElement('div', { className: 'horeg-header' });
     const badge = createElement('div', {
       className: 'horeg-rig-badge',
-      innerHTML: `<span class="horeg-badge-led"></span> SOUND HOREG • HIGH VOLTAGE`
+      innerHTML: /* html */ `<span class="horeg-badge-led"></span> SOUND HOREG • HIGH VOLTAGE`
     });
     header.appendChild(badge);
     contentWrap.appendChild(header);
@@ -118,7 +118,7 @@ export class UI {
     this.eqContainer = this.stageContainer; // backwards compatibility
 
     this.coverContainer = createElement('div', { className: 'horeg-sub-cover-wrap' });
-    this.coverContainer.innerHTML = `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
+    this.coverContainer.innerHTML = /* html */ `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
 
     const metaWrap = createElement('div', { className: 'horeg-track-meta' });
     this.titleWrap = createElement('div', { className: 'horeg-title-wrap' });
@@ -248,7 +248,7 @@ export class UI {
           'aria-label': 'Toggle Mega Bass +12 dB',
           'data-tooltip': 'Mega Bass (+12 dB)'
         },
-        innerHTML: `<span class="horeg-mega-led"></span><span>MEGA</span>`
+        innerHTML: /* html */ `<span class="horeg-mega-led"></span><span>MEGA</span>`
       });
 
       this.bassDropup.appendChild(bassHeader);
@@ -302,7 +302,7 @@ export class UI {
     // Drawer Header with count & Add Track button
     const drawerHeader = createElement('div', { className: 'horeg-drawer-header' });
     const drawerHeading = createElement('div', { className: 'horeg-drawer-heading' });
-    drawerHeading.innerHTML = `<span>PLAYLIST</span>`;
+    drawerHeading.innerHTML = /* html */ `<span>PLAYLIST</span>`;
     this.drawerCountEl = createElement('span', { className: 'horeg-drawer-count', textContent: '0' });
     drawerHeading.appendChild(this.drawerCountEl);
     drawerHeader.appendChild(drawerHeading);
@@ -310,7 +310,7 @@ export class UI {
     this.addTrackBtn = createElement('button', {
       className: 'horeg-btn-add-track',
       attributes: { type: 'button', 'aria-label': 'Add track to playlist', 'data-tooltip': 'Add Track' },
-      innerHTML: `${ICONS.plus} <span>Add Track</span>`
+      innerHTML: /* html */ `${ICONS.plus} <span>Add Track</span>`
     });
     drawerHeader.appendChild(this.addTrackBtn);
     this.drawerEl.appendChild(drawerHeader);
@@ -323,12 +323,12 @@ export class UI {
     this.tabBtnFile = createElement('button', {
       className: 'horeg-tab-btn active',
       attributes: { type: 'button' },
-      innerHTML: `${ICONS.upload} <span>Local File</span>`
+      innerHTML: /* html */ `${ICONS.upload} <span>Local File</span>`
     });
     this.tabBtnUrl = createElement('button', {
       className: 'horeg-tab-btn',
       attributes: { type: 'button' },
-      innerHTML: `${ICONS.link} <span>Audio URL</span>`
+      innerHTML: /* html */ `${ICONS.link} <span>Audio URL</span>`
     });
     tabs.appendChild(this.tabBtnFile);
     tabs.appendChild(this.tabBtnUrl);
@@ -340,7 +340,7 @@ export class UI {
       attributes: { type: 'file', accept: 'audio/*', multiple: 'true', style: 'display: none;' }
     });
     this.dropzoneEl = createElement('div', { className: 'horeg-dropzone' });
-    this.dropzoneEl.innerHTML = `
+    this.dropzoneEl.innerHTML = /* html */ `
       <div class="horeg-dropzone-icon">${ICONS.upload}</div>
       <div class="horeg-dropzone-text">Choose Local Audio File</div>
       <div class="horeg-dropzone-hint">Click here or drag & drop audio files (.mp3, .wav, .flac, .ogg, .m4a)</div>
@@ -372,7 +372,7 @@ export class UI {
     this.submitUrlBtn = createElement('button', {
       className: 'horeg-btn-submit',
       attributes: { type: 'button' },
-      innerHTML: `${ICONS.plus} Add Track`
+      innerHTML: /* html */ `${ICONS.plus} Add Track`
     });
     formActions.appendChild(this.cancelAddBtn);
     formActions.appendChild(this.submitUrlBtn);
@@ -672,11 +672,11 @@ export class UI {
         }
       });
       this.coverImgEl.onerror = () => {
-        this.coverContainer.innerHTML = `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
+        this.coverContainer.innerHTML = /* html */ `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
       };
       this.coverContainer.appendChild(this.coverImgEl);
     } else {
-      this.coverContainer.innerHTML = `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
+      this.coverContainer.innerHTML = /* html */ `<span class="horeg-cover-fallback">${ICONS.speaker}</span>`;
     }
 
     this.checkTitleMarquee();

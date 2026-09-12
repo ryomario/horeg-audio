@@ -58,7 +58,7 @@ export class Visualizer {
     // 1. Left Soundbox (Satellite with 2 circular drivers & water ripples)
     this.leftBoxEl = document.createElement('div');
     this.leftBoxEl.className = 'horeg-soundbox is-satellite is-left';
-    this.leftBoxEl.innerHTML = `
+    this.leftBoxEl.innerHTML = /* html */ `
       <div class="horeg-box-header">
         <span class="horeg-box-bolt top-left"></span>
         <span class="horeg-tweeter-slot"></span>
@@ -115,7 +115,7 @@ export class Visualizer {
     // Subwoofer frame and bolts
     const subFrame = document.createElement('div');
     subFrame.className = 'horeg-sub-frame';
-    subFrame.innerHTML = `
+    subFrame.innerHTML = /* html */ `
       <span class="horeg-box-bolt top-left"></span>
       <span class="horeg-box-bolt top-right"></span>
       <span class="horeg-sub-badge">SUB 18\"</span>
@@ -151,7 +151,7 @@ export class Visualizer {
     // 3. Right Soundbox (Satellite with 2 circular drivers & water ripples)
     this.rightBoxEl = document.createElement('div');
     this.rightBoxEl.className = 'horeg-soundbox is-satellite is-right';
-    this.rightBoxEl.innerHTML = `
+    this.rightBoxEl.innerHTML = /* html */ `
       <div class="horeg-box-header">
         <span class="horeg-box-bolt top-left"></span>
         <span class="horeg-tweeter-slot"></span>
