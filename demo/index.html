@@ -524,36 +524,43 @@
       </svg>
     `);
 
+    // Check if custom playlist was provided by CLI runner (npx horeg-audio ./my-audio-folder)
+    const customPlaylist = (window.__HOREG_CUSTOM_PLAYLIST__ && Array.isArray(window.__HOREG_CUSTOM_PLAYLIST__) && window.__HOREG_CUSTOM_PLAYLIST__.length > 0)
+      ? window.__HOREG_CUSTOM_PLAYLIST__
+      : null;
+
+    const defaultTracks = [
+      {
+        id: 1,
+        title: '🔥 Bass Drop Test: Intro 0-4s (Tanpa Bass) ➔ Detik 4: DROP BASS HOREG!',
+        artist: 'DJ Riswanda Karnaval Pati',
+        album: 'Festival Sound Rig Pati 2026',
+        coverArt: demoCover1,
+        src: synthTrack1,
+        duration: 16.0
+      },
+      {
+        id: 2,
+        title: '❄️ Zero Bass Test: Melodi & Vokal Murni (Subwoofer Stagnan)',
+        artist: 'Brewog Acoustic Studio',
+        album: 'Clean Studio Live 2026',
+        src: synthTrack2,
+        duration: 12.0
+      },
+      {
+        id: 3,
+        title: '⚡ Nonstop 18-Inch Subwoofer Horeg 130 BPM (Extreme Bass)',
+        artist: 'Faskho Sengon Rig Master',
+        album: 'Mega Bass Volume 5',
+        src: synthTrack3,
+        duration: 16.0
+      }
+    ];
+
     // Initialize HoregAudio
     const player = new HoregAudio({
       container: '#player-mount',
-      playlist: [
-        {
-          id: 1,
-          title: '🔥 Bass Drop Test: Intro 0-4s (Tanpa Bass) ➔ Detik 4: DROP BASS HOREG!',
-          artist: 'DJ Riswanda Karnaval Pati',
-          album: 'Festival Sound Rig Pati 2026',
-          coverArt: demoCover1,
-          src: synthTrack1,
-          duration: 16.0
-        },
-        {
-          id: 2,
-          title: '❄️ Zero Bass Test: Melodi & Vokal Murni (Subwoofer Stagnan)',
-          artist: 'Brewog Acoustic Studio',
-          album: 'Clean Studio Live 2026',
-          src: synthTrack2,
-          duration: 12.0
-        },
-        {
-          id: 3,
-          title: '⚡ Nonstop 18-Inch Subwoofer Horeg 130 BPM (Extreme Bass)',
-          artist: 'Faskho Sengon Rig Master',
-          album: 'Mega Bass Volume 5',
-          src: synthTrack3,
-          duration: 16.0
-        }
-      ],
+      playlist: customPlaylist || defaultTracks,
       theme: {
         variant: 'horeg-classic',
         primaryGlowColor: '#f59e0b'
@@ -565,6 +572,10 @@
       onEnded: (t) => log(`🏁 Ended: "${t.title}"`),
       onError: (err) => log(`⚠️ Error: ${err.message || 'playback error'}`)
     });
+
+    if (customPlaylist) {
+      log(`📁 Berhasil memuat ${customPlaylist.length} trek audio lokal dari folder!`);
+    }
 
     // Theme Switchers
     const btnClassic = document.getElementById('btn-classic');
