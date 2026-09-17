@@ -1,9 +1,11 @@
 import { AudioEnergy } from './AudioEngine';
+import { VisualizerMode } from './types';
 
 export interface VisualizerOptions {
   stageContainer: HTMLElement;
   coverContainer?: HTMLElement;
   enableAnimation?: boolean;
+  mode?: VisualizerMode;
   getAudioEnergy?: () => AudioEnergy;
 }
 
@@ -14,6 +16,11 @@ export class Visualizer {
   private isRunning: boolean = false;
   private animFrameId: number | null = null;
   private getAudioEnergy?: () => AudioEnergy;
+  private mode: VisualizerMode = 'dom';
+
+  // Canvas Element
+  private canvasEl: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
 
   // DOM Elements
   private leftBoxEl!: HTMLElement;
@@ -43,9 +50,21 @@ export class Visualizer {
     this.stageContainer = options.stageContainer;
     this.coverContainer = options.coverContainer || null;
     this.isEnabled = options.enableAnimation !== false;
+    this.mode = options.mode || 'dom';
     this.getAudioEnergy = options.getAudioEnergy;
 
     this.buildStage();
+  }
+
+  public setMode(mode: VisualizerMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.buildStage();
+    this.applyExcursion(this.smoothBass, this.smoothLeft, this.smoothRight);
+  }
+
+  public getMode(): VisualizerMode {
+    return this.mode;
   }
 
   public setAudioEnergyGetter(fn: () => AudioEnergy): void {
@@ -54,6 +73,31 @@ export class Visualizer {
 
   private buildStage(): void {
     this.stageContainer.innerHTML = '';
+
+    if (this.mode === 'canvas') {
+      this.canvasEl = document.createElement('canvas');
+      this.canvasEl.className = 'horeg-canvas-visualizer';
+      this.canvasEl.style.width = '100%';
+      this.canvasEl.style.height = '100%';
+      this.canvasEl.style.display = 'block';
+      this.canvasEl.style.borderRadius = '12px';
+      this.stageContainer.appendChild(this.canvasEl);
+      this.ctx = this.canvasEl.getContext('2d');
+
+      if (this.coverContainer) {
+        const coverWrap = document.createElement('div');
+        coverWrap.className = 'horeg-canvas-cover-wrap';
+        coverWrap.style.position = 'absolute';
+        coverWrap.style.left = '50%';
+        coverWrap.style.top = '50%';
+        coverWrap.style.transform = 'translate(-50%, -50%)';
+        coverWrap.style.pointerEvents = 'none';
+        coverWrap.style.zIndex = '5';
+        coverWrap.appendChild(this.coverContainer);
+        this.stageContainer.appendChild(coverWrap);
+      }
+      return;
+    }
 
     // 1. Left Soundbox (Satellite with 2 circular drivers & water ripples)
     this.leftBoxEl = document.createElement('div');
@@ -193,9 +237,17 @@ export class Visualizer {
 
   public setCoverContainer(container: HTMLElement): void {
     this.coverContainer = container;
-    if (this.subConeEl && !this.subConeEl.contains(container)) {
-      this.subConeEl.innerHTML = '';
-      this.subConeEl.appendChild(container);
+    if (this.mode === 'dom') {
+      if (this.subConeEl && !this.subConeEl.contains(container)) {
+        this.subConeEl.innerHTML = '';
+        this.subConeEl.appendChild(container);
+      }
+    } else if (this.stageContainer) {
+      const existingWrap = this.stageContainer.querySelector('.horeg-canvas-cover-wrap');
+      if (existingWrap && !existingWrap.contains(container)) {
+        existingWrap.innerHTML = '';
+        existingWrap.appendChild(container);
+      }
     }
   }
 
@@ -323,7 +375,183 @@ export class Visualizer {
     this.animFrameId = requestAnimationFrame(this.loop);
   };
 
+  private drawCanvas(bass: number, left: number, right: number): void {
+    if (!this.canvasEl || !this.ctx) return;
+    const rect = this.canvasEl.getBoundingClientRect();
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const w = Math.floor(rect.width);
+    const h = Math.floor(rect.height);
+    if (w === 0 || h === 0) return;
+
+    if (this.canvasEl.width !== w * dpr || this.canvasEl.height !== h * dpr) {
+      this.canvasEl.width = w * dpr;
+      this.canvasEl.height = h * dpr;
+    }
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const centerY = h / 2;
+    const centerX = w / 2;
+
+    // 1. Left Satellite Speaker
+    const satW = Math.min(84, w * 0.18);
+    const satH = Math.min(145, h * 0.78);
+    const leftX = Math.max(12, centerX - satW * 2.2);
+
+    ctx.fillStyle = '#121214';
+    ctx.strokeStyle = '#27272a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(leftX, centerY - satH / 2, satW, satH, 6) : ctx.rect(leftX, centerY - satH / 2, satW, satH);
+    ctx.fill();
+    ctx.stroke();
+
+    const driverRadius = satW * 0.32;
+    const leftScale = 1.0 + left * 0.18;
+    const leftTopY = centerY - satH * 0.23;
+    const leftBottomY = centerY + satH * 0.23;
+    const satCenterX = leftX + satW / 2;
+
+    [leftTopY, leftBottomY].forEach((driverY) => {
+      if (left > 0.04) {
+        ctx.beginPath();
+        ctx.arc(satCenterX, driverY, driverRadius * (1.2 + left * 0.4), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.8, left * 0.75)})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(satCenterX, driverY, driverRadius * leftScale, 0, Math.PI * 2);
+      ctx.fillStyle = '#18181b';
+      ctx.fill();
+      ctx.strokeStyle = '#3f3f46';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(satCenterX, driverY, driverRadius * 0.35 * leftScale, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+    });
+
+    // 2. Right Satellite Speaker
+    const rightX = Math.min(w - satW - 12, centerX + satW * 1.2);
+    ctx.fillStyle = '#121214';
+    ctx.strokeStyle = '#27272a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(rightX, centerY - satH / 2, satW, satH, 6) : ctx.rect(rightX, centerY - satH / 2, satW, satH);
+    ctx.fill();
+    ctx.stroke();
+
+    const rightScale = 1.0 + right * 0.18;
+    const satRightCenterX = rightX + satW / 2;
+    [leftTopY, leftBottomY].forEach((driverY) => {
+      if (right > 0.04) {
+        ctx.beginPath();
+        ctx.arc(satRightCenterX, driverY, driverRadius * (1.2 + right * 0.4), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.8, right * 0.75)})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(satRightCenterX, driverY, driverRadius * rightScale, 0, Math.PI * 2);
+      ctx.fillStyle = '#18181b';
+      ctx.fill();
+      ctx.strokeStyle = '#3f3f46';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(satRightCenterX, driverY, driverRadius * 0.35 * rightScale, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+    });
+
+    // 3. Center Monster Subwoofer
+    const subSize = Math.min(w * 0.40, h * 0.88);
+    const subRadius = subSize / 2;
+
+    // Shockwave expansion rings
+    if (bass > 0.45) {
+      const shockPower = (bass - 0.45) / 0.55;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, subRadius * (1.08 + shockPower * 0.48), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.85, shockPower * 1.2)})`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, subRadius * (1.28 + shockPower * 0.65), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(239, 68, 68, ${Math.max(0, (shockPower - 0.15) * 0.9)})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    // Subwoofer Cabinet (Micro-rumble vibration on heavy bass)
+    let rumbleX = 0;
+    let rumbleY = 0;
+    if (bass > 0.45) {
+      const r = (bass - 0.45) / 0.55;
+      rumbleX = (Math.random() - 0.5) * 1.8 * r;
+      rumbleY = (Math.random() - 0.5) * 1.8 * r;
+    }
+    const subBoxX = centerX - subSize / 2 + rumbleX;
+    const subBoxY = centerY - subSize / 2 + rumbleY;
+
+    ctx.fillStyle = '#18181b';
+    ctx.strokeStyle = '#27272a';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(subBoxX, subBoxY, subSize, subSize, 12) : ctx.rect(subBoxX, subBoxY, subSize, subSize);
+    ctx.fill();
+    ctx.stroke();
+
+    // Rubber Surround
+    const surroundScale = 1.0 + bass * 0.08;
+    ctx.beginPath();
+    ctx.arc(centerX + rumbleX, centerY + rumbleY, subRadius * 0.82 * surroundScale, 0, Math.PI * 2);
+    ctx.fillStyle = '#27272a';
+    ctx.fill();
+
+    // Subwoofer Cone Excursion
+    const coneScale = 1.0 + bass * 0.24;
+    const coneRadius = subRadius * 0.70 * coneScale;
+    const radGrad = ctx.createRadialGradient(centerX + rumbleX, centerY + rumbleY, coneRadius * 0.1, centerX + rumbleX, centerY + rumbleY, coneRadius);
+    radGrad.addColorStop(0, '#27272a');
+    radGrad.addColorStop(0.8, '#121214');
+    radGrad.addColorStop(1, '#09090b');
+
+    ctx.beginPath();
+    ctx.arc(centerX + rumbleX, centerY + rumbleY, coneRadius, 0, Math.PI * 2);
+    ctx.fillStyle = radGrad;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.8, bass * 0.9)})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Center dust cap
+    ctx.beginPath();
+    ctx.arc(centerX + rumbleX, centerY + rumbleY, coneRadius * 0.32, 0, Math.PI * 2);
+    ctx.fillStyle = '#18181b';
+    ctx.fill();
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.restore();
+
+    if (this.coverContainer) {
+      const coverScale = 1.0 + bass * 0.12;
+      this.coverContainer.style.transform = `scale(${coverScale.toFixed(3)})`;
+    }
+  }
+
   private applyExcursion(bass: number, left: number, right: number): void {
+    if (this.mode === 'canvas') {
+      this.drawCanvas(bass, left, right);
+      return;
+    }
+
     // 1. Center Monster Subwoofer: Proportional excursion scaled according to dB capacity
     const subScale = 1.0 + bass * 0.24;
     this.subConeEl.style.transform = `scale(${subScale.toFixed(3)})`;
@@ -407,6 +635,8 @@ export class Visualizer {
 
   public destroy(): void {
     this.stop();
+    this.canvasEl = null;
+    this.ctx = null;
     this.stageContainer.innerHTML = '';
   }
 }

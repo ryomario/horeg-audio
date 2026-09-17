@@ -153,6 +153,99 @@
       border: 1px solid rgba(239, 68, 68, 0.2);
       border-radius: 8px;
     }
+
+    .builder-section {
+      background: #0d0e14;
+      border: 1px solid #1e202e;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .builder-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #71717a;
+      margin-bottom: 8px;
+    }
+    .pill-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .pill-btn {
+      all: unset;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #181922;
+      color: #d4d4d8;
+      border: 1px solid #27273a;
+      transition: all 0.15s ease;
+    }
+    .pill-btn:hover {
+      border-color: #f59e0b;
+      color: #fff;
+    }
+    .pill-btn.active {
+      background: #f59e0b;
+      color: #09090b;
+      border-color: #f59e0b;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+    }
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 10px;
+    }
+    .color-control {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #14151f;
+      border: 1px solid #232536;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 11px;
+      color: #a1a1aa;
+    }
+    .color-control input[type="color"] {
+      all: unset;
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid #3f3f46;
+    }
+    .code-preview {
+      margin: 0;
+      background: #090a0f;
+      border: 1px solid #1f212d;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.5;
+    }
+    .copy-btn {
+      all: unset;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      background: #27273a;
+      color: #f4f4f5;
+      border: 1px solid #3f3f52;
+      transition: all 0.2s ease;
+    }
+    .copy-btn:hover {
+      background: #3b3c54;
+    }
   </style>
 </head>
 <body>
@@ -230,6 +323,73 @@
 
       <div class="event-log" id="event-log">
         [Ready] HoregAudio instance initialized.
+      </div>
+    </div>
+
+    <!-- Interactive Playground & Theme Builder Card -->
+    <div class="sandbox-card" id="playground-card">
+      <div style="font-size: 14px; font-weight: 800; color: #f59e0b; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+        <span>🎛️ INTERACTIVE PLAYGROUND & THEME BUILDER</span>
+        <span style="font-size: 10px; background: rgba(245,158,11,0.15); color: #f59e0b; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(245,158,11,0.3);">LIVE PREVIEW</span>
+      </div>
+
+      <!-- Section: Visualizer Engine & Equalizer Presets -->
+      <div class="builder-section">
+        <div class="builder-label">VISUALIZER ENGINE:</div>
+        <div class="pill-group">
+          <button class="pill-btn active" id="btn-vis-dom">🏢 3D DOM Elements</button>
+          <button class="pill-btn" id="btn-vis-canvas">🎨 HTML5 2D Canvas (Subwoofer Glerr)</button>
+        </div>
+      </div>
+
+      <div class="builder-section" style="margin-top: 12px;">
+        <div class="builder-label">EQ AUDIO PRESET:</div>
+        <div class="pill-group">
+          <button class="pill-btn active" id="btn-eq-flat">Flat</button>
+          <button class="pill-btn" id="btn-eq-horeg">🔥 Horeg Sub-Punch (+10dB Sub)</button>
+          <button class="pill-btn" id="btn-eq-extreme">⚡ Bass Extreme (+14dB Sub)</button>
+          <button class="pill-btn" id="btn-eq-vocal">🎤 Vocal Carnival (+4dB Mid)</button>
+        </div>
+      </div>
+
+      <!-- Section: Live Custom CSS Colors & Theme Properties -->
+      <div class="builder-section" style="margin-top: 12px;">
+        <div class="builder-label">CUSTOM CSS VARIABLES:</div>
+        <div class="theme-grid">
+          <div class="color-control">
+            <label>Background:</label>
+            <input type="color" id="picker-bg" value="#0d0e14" />
+          </div>
+          <div class="color-control">
+            <label>Primary / Bass:</label>
+            <input type="color" id="picker-primary" value="#f59e0b" />
+          </div>
+          <div class="color-control">
+            <label>Text:</label>
+            <input type="color" id="picker-text" value="#f4f4f5" />
+          </div>
+          <div class="color-control">
+            <label>Card Surface:</label>
+            <input type="color" id="picker-surface" value="#161822" />
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-top: 12px; font-size: 11px; color: #a1a1aa;">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            Radius: <input type="range" id="slider-radius" min="0" max="24" value="16" style="accent-color: #f59e0b;" /> <span id="radius-val">16px</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="check-animation" checked style="accent-color: #f59e0b;" /> EQ Glow Animation
+          </label>
+        </div>
+      </div>
+
+      <!-- Section: Live Code Generator -->
+      <div style="margin-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span class="builder-label" style="margin: 0;">GENERATED JAVASCRIPT CONFIGURATION:</span>
+          <button class="copy-btn" id="btn-copy-code">📋 Copy Code</button>
+        </div>
+        <pre class="code-preview" id="code-snippet"><code></code></pre>
       </div>
     </div>
 
@@ -421,37 +581,49 @@
 
     btnClassic.addEventListener('click', () => {
       setActiveBtn(btnClassic);
+      playgroundState.variant = 'horeg-classic';
       player.setTheme({ variant: 'horeg-classic' });
+      updateCodeSnippet();
       log('🎨 Theme changed: horeg-classic');
     });
 
     btnNightclub.addEventListener('click', () => {
       setActiveBtn(btnNightclub);
+      playgroundState.variant = 'horeg-nightclub';
       player.setTheme({ variant: 'horeg-nightclub' });
+      updateCodeSnippet();
       log('🎨 Theme changed: horeg-nightclub');
     });
 
     btnStealth.addEventListener('click', () => {
       setActiveBtn(btnStealth);
+      playgroundState.variant = 'horeg-stealth';
       player.setTheme({ variant: 'horeg-stealth' });
+      updateCodeSnippet();
       log('🎨 Theme changed: horeg-stealth');
     });
 
     btnLight.addEventListener('click', () => {
       setActiveBtn(btnLight);
+      playgroundState.variant = 'horeg-light';
       player.setTheme({ variant: 'horeg-light' });
+      updateCodeSnippet();
       log('🎨 Theme changed: horeg-light (Daylight Rig)');
     });
 
     btnLightClean.addEventListener('click', () => {
       setActiveBtn(btnLightClean);
+      playgroundState.variant = 'horeg-light-clean';
       player.setTheme({ variant: 'horeg-light-clean' });
+      updateCodeSnippet();
       log('🎨 Theme changed: horeg-light-clean (Studio Neon)');
     });
 
     btnLightMinimal.addEventListener('click', () => {
       setActiveBtn(btnLightMinimal);
+      playgroundState.variant = 'horeg-light-minimal';
       player.setTheme({ variant: 'horeg-light-minimal' });
+      updateCodeSnippet();
       log('🎨 Theme changed: horeg-light-minimal (Slate Minimal)');
     });
 
@@ -601,6 +773,174 @@
         }
       }
     }, 75);
+
+    // --- Interactive Playground & Theme Builder Logic ---
+    let playgroundState = {
+      variant: 'horeg-classic',
+      visualizerMode: 'dom',
+      eqPreset: 'flat',
+      radius: 16,
+      enableEqAnimation: true,
+      colors: {
+        bg: '#0d0e14',
+        primary: '#f59e0b',
+        text: '#f4f4f5',
+        surface: '#161822'
+      }
+    };
+
+    const snippetEl = document.querySelector('#code-snippet code');
+    function updateCodeSnippet() {
+      if (!snippetEl) return;
+      const snippet = `// 1. Mount container in your HTML:
+// <div id="horeg-player"></div>
+
+// 2. Import and initialize HoregAudio:
+import { HoregAudio } from 'horeg-audio';
+
+const player = new HoregAudio('#horeg-player', {
+  theme: {
+    variant: '${playgroundState.variant}',
+    enableEqAnimation: ${playgroundState.enableEqAnimation},
+    customColors: {
+      bg: '${playgroundState.colors.bg}',
+      primary: '${playgroundState.colors.primary}',
+      text: '${playgroundState.colors.text}',
+      surface: '${playgroundState.colors.surface}',
+      radius: '${playgroundState.radius}px'
+    }
+  },
+  visualizerMode: '${playgroundState.visualizerMode}', // 'dom' | 'canvas'
+  eqPreset: '${playgroundState.eqPreset}', // 'flat' | 'horeg-sub-punch' | 'bass-extreme' | 'vocal-carnival'
+  bassBoost: 6, // 0 to 15 dB
+  playlist: [
+    {
+      title: 'Sound Horeg Audio',
+      artist: 'Glerr Master',
+      src: 'https://example.com/audio.mp3'
+    }
+  ]
+});`;
+      snippetEl.textContent = snippet;
+    }
+
+    // Visualizer Mode Switchers
+    const btnVisDom = document.getElementById('btn-vis-dom');
+    const btnVisCanvas = document.getElementById('btn-vis-canvas');
+
+    btnVisDom.addEventListener('click', () => {
+      btnVisDom.classList.add('active');
+      btnVisCanvas.classList.remove('active');
+      playgroundState.visualizerMode = 'dom';
+      player.setVisualizerMode('dom');
+      updateCodeSnippet();
+      log('🎨 Visualizer switched to 3D DOM Elements');
+    });
+
+    btnVisCanvas.addEventListener('click', () => {
+      btnVisCanvas.classList.add('active');
+      btnVisDom.classList.remove('active');
+      playgroundState.visualizerMode = 'canvas';
+      player.setVisualizerMode('canvas');
+      updateCodeSnippet();
+      log('🎨 Visualizer switched to HTML5 2D Canvas (Subwoofer Glerr)');
+    });
+
+    // EQ Preset Switchers
+    const eqBtns = [
+      { id: 'btn-eq-flat', preset: 'flat', label: 'Flat' },
+      { id: 'btn-eq-horeg', preset: 'horeg-sub-punch', label: 'Horeg Sub-Punch' },
+      { id: 'btn-eq-extreme', preset: 'bass-extreme', label: 'Bass Extreme' },
+      { id: 'btn-eq-vocal', preset: 'vocal-carnival', label: 'Vocal Carnival' }
+    ];
+
+    eqBtns.forEach(item => {
+      const btn = document.getElementById(item.id);
+      if (btn) {
+        btn.addEventListener('click', () => {
+          eqBtns.forEach(b => document.getElementById(b.id)?.classList.remove('active'));
+          btn.classList.add('active');
+          playgroundState.eqPreset = item.preset;
+          player.setEqPreset(item.preset);
+          updateCodeSnippet();
+          log(`🎛️ Equalizer preset applied: ${item.label}`);
+        });
+      }
+    });
+
+    // Live Custom CSS Colors & Theme Properties
+    function applyCustomTheme() {
+      player.setTheme({
+        variant: playgroundState.variant,
+        enableEqAnimation: playgroundState.enableEqAnimation,
+        customColors: {
+          bg: playgroundState.colors.bg,
+          primary: playgroundState.colors.primary,
+          text: playgroundState.colors.text,
+          surface: playgroundState.colors.surface,
+          radius: `${playgroundState.radius}px`
+        }
+      });
+      updateCodeSnippet();
+    }
+
+    const pickerBg = document.getElementById('picker-bg');
+    const pickerPrimary = document.getElementById('picker-primary');
+    const pickerText = document.getElementById('picker-text');
+    const pickerSurface = document.getElementById('picker-surface');
+    const sliderRadius = document.getElementById('slider-radius');
+    const radiusVal = document.getElementById('radius-val');
+    const checkAnim = document.getElementById('check-animation');
+
+    pickerBg.addEventListener('input', (e) => {
+      playgroundState.colors.bg = e.target.value;
+      applyCustomTheme();
+    });
+
+    pickerPrimary.addEventListener('input', (e) => {
+      playgroundState.colors.primary = e.target.value;
+      applyCustomTheme();
+    });
+
+    pickerText.addEventListener('input', (e) => {
+      playgroundState.colors.text = e.target.value;
+      applyCustomTheme();
+    });
+
+    pickerSurface.addEventListener('input', (e) => {
+      playgroundState.colors.surface = e.target.value;
+      applyCustomTheme();
+    });
+
+    sliderRadius.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      playgroundState.radius = val;
+      radiusVal.textContent = `${val}px`;
+      applyCustomTheme();
+    });
+
+    checkAnim.addEventListener('change', (e) => {
+      playgroundState.enableEqAnimation = e.target.checked;
+      applyCustomTheme();
+    });
+
+    // Copy Code Button
+    const btnCopy = document.getElementById('btn-copy-code');
+    btnCopy.addEventListener('click', async () => {
+      const code = snippetEl?.textContent || '';
+      try {
+        await navigator.clipboard.writeText(code);
+        btnCopy.textContent = '✅ Copied!';
+        setTimeout(() => {
+          btnCopy.textContent = '📋 Copy Code';
+        }, 2000);
+      } catch (_) {
+        btnCopy.textContent = 'Press Ctrl+C to copy';
+      }
+    });
+
+    // Initialize snippet
+    updateCodeSnippet();
   </script>
 </body>
 </html>

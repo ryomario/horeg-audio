@@ -1,4 +1,4 @@
-import { HoregPlayerOptions, HoregTheme, Track, LoopMode, PersistenceOptions } from './types';
+import { HoregPlayerOptions, HoregTheme, Track, LoopMode, PersistenceOptions, VisualizerMode, EqPreset } from './types';
 import { generateStyles, THEME_PRESETS } from './styles';
 import { AudioEngine, AudioEnergy } from './AudioEngine';
 import { UI } from './UI';
@@ -23,11 +23,13 @@ export class HoregAudio {
   private theme: HoregTheme;
   private boundKeyHandler: (e: KeyboardEvent) => void;
   private onBassChangeCallback?: (bassLevel: number) => void;
+  private onEqChangeCallback?: (preset: EqPreset) => void;
   private persistOpts: ResolvedPersistence | null = null;
   private isMediaSessionEnabled: boolean = true;
 
   constructor(options: HoregPlayerOptions) {
     this.onBassChangeCallback = options.onBassChange;
+    this.onEqChangeCallback = options.onEqChange;
     this.isMediaSessionEnabled = options.mediaSession !== false;
 
     if (typeof options.container === 'string') {
@@ -149,6 +151,7 @@ export class HoregAudio {
     this.visualizer = new Visualizer({
       stageContainer: this.ui.stageContainer,
       coverContainer: this.ui.coverContainer,
+      mode: effectiveOptions.visualizerMode || 'dom',
       enableAnimation: this.theme.enableEqAnimation !== false
     });
 
@@ -531,11 +534,31 @@ export class HoregAudio {
     } catch (_) {}
   }
 
+  public setEqPreset(preset: EqPreset): void {
+    this.audioEngine.setEqPreset(preset);
+    if (this.onEqChangeCallback) {
+      this.onEqChangeCallback(preset);
+    }
+  }
+
+  public getEqPreset(): EqPreset {
+    return this.audioEngine.getEqPreset();
+  }
+
+  public setVisualizerMode(mode: VisualizerMode): void {
+    this.visualizer.setMode(mode);
+  }
+
+  public getVisualizerMode(): VisualizerMode {
+    return this.visualizer.getMode();
+  }
+
   private updateMediaSessionPlaybackState(state: 'playing' | 'paused' | 'none'): void {
-    if (!this.isMediaSessionEnabled || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
-    try {
-      navigator.mediaSession.playbackState = state;
-    } catch (_) {}
+    if (this.isMediaSessionEnabled && typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.playbackState = state;
+      } catch (_) {}
+    }
   }
 
   public destroy(): void {

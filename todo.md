@@ -15,12 +15,12 @@
 
 **Phase 2: Visualizer & Horeg Aesthetic Engine**
 
-* [ ] **Canvas-based Rendering Option**: Sediakan opsi render visualizer menggunakan HTML5 Canvas internal di samping DOM-bar saat ini untuk efisiensi CPU/GPU.
-* [ ] **Dynamic Peak & Bass Sensitivity**: Terapkan *peak threshold detection* dinamis pada frekuensi 20 Hz – 150 Hz agar denyut box speaker sinkron presisi dengan *kick drum* lagu.
+* [x] **Canvas-based Rendering Option**: Sediakan opsi render visualizer menggunakan HTML5 Canvas internal di samping DOM-bar saat ini untuk efisiensi CPU/GPU.
+* [x] **Dynamic Peak & Bass Sensitivity**: Terapkan *peak threshold detection* dinamis pada frekuensi 20 Hz – 150 Hz agar denyut box speaker sinkron presisi dengan *kick drum* lagu.
 
 
-* [ ] **Equalizer Presets**: Tambahkan preset filter suara (misal: *Horeg Sub-Punch*, *Vocal Carnival*, *Flat Monitor*).
-* [ ] **Custom SVG Icons Set**: Enkapsulasi seluruh aset tombol (play, pause, next, prev, repeat, volume, knob) ke bentuk inline SVG murni yang responsif terhadap token warna `--horeg-glow`.
+* [x] **Equalizer Presets**: Tambahkan preset filter suara (misal: *Horeg Sub-Punch*, *Vocal Carnival*, *Flat Monitor*).
+* [x] **Custom SVG Icons Set**: Enkapsulasi seluruh aset tombol (play, pause, next, prev, repeat, volume, knob) ke bentuk inline SVG murni yang responsif terhadap token warna `--horeg-glow`.
 
 
 
@@ -30,19 +30,19 @@
 * [x] **State Persistence**: Tambahkan opsi konfigurasi untuk menyimpan memori setelan volume, bass level, mode repeat/shuffle, serta trek terakhir di `localStorage`.
 
 
-* [ ] **Framework Wrappers (Opsional)**: Buat wrapper ringan untuk React (`horeg-audio-react`) dan Vue (`horeg-audio-vue`) yang membungkus Web Component Shadow DOM.
+* [x] **Framework Wrappers (Opsional)**: Buat wrapper ringan untuk React (`horeg-audio-react`) dan Vue (`horeg-audio-vue`) yang membungkus Web Component Shadow DOM.
 
 
-* [ ] **CLI Runner Implementation**: Implementasikan binary `bin/cli.js` menggunakan `sirv` dan `open` agar pengguna bisa langsung menjalankan web demo lokal lewat perintah `npx horeg-audio`.
+* [x] **CLI Runner Implementation**: Implementasikan binary `bin/cli.js` menggunakan `sirv` dan `open` agar pengguna bisa langsung menjalankan web demo lokal lewat perintah `npx horeg-audio`.
 
 
 
 **Phase 4: Testing, Dokumentasi & CI/CD**
 
-* [ ] **Unit & Audio Mock Testing**: Siapkan setup testing menggunakan **Vitest** dan mock Web Audio API untuk memverifikasi logika playlist, navigasi, dan public API methods.
+* [x] **Unit & Audio Mock Testing**: Siapkan setup testing menggunakan **Vitest** dan mock Web Audio API untuk memverifikasi logika playlist, navigasi, dan public API methods.
 
 
-* [ ] **Automated Changelog**: Pasang alur otomatisasi rilis changelog (misal: Changesets atau Conventional Commits) di alur kerja GitHub Actions `.github/workflows/release.yml`.
+* [x] **Automated Changelog**: Pasang alur otomatisasi rilis changelog (misal: Changesets atau Conventional Commits) di alur kerja GitHub Actions `.github/workflows/release.yml`.
 
 
-* [ ] **Interactive Playground**: Lengkapi halaman demo di GitHub Pages dengan fitur customizer CSS theme builder interaktif yang langsung menghasilkan kode konfigurasi JavaScript.
+* [x] **Interactive Playground**: Lengkapi halaman demo di GitHub Pages dengan fitur customizer CSS theme builder interaktif yang langsung menghasilkan kode konfigurasi JavaScript.

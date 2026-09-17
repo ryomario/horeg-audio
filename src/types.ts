@@ -42,6 +42,9 @@ export interface PersistenceOptions {
   lastTrack?: boolean;
 }
 
+export type VisualizerMode = 'dom' | 'canvas';
+export type EqPreset = 'flat' | 'horeg-sub-punch' | 'vocal-carnival' | 'bass-extreme';
+
 export interface HoregPlayerOptions {
   container: string | HTMLElement;
   playlist: Track[];
@@ -54,6 +57,8 @@ export interface HoregPlayerOptions {
   enableBassControl?: boolean; // Show/hide UI bass control (default: true)
   maxWidth?: number | string; // Optional container max-width (number in px or CSS string). If not set, container is fluid.
   theme?: HoregTheme;
+  visualizerMode?: VisualizerMode; // 'dom' (default) or 'canvas'
+  eqPreset?: EqPreset; // Equalizer sound preset (default: 'flat')
   preloadNext?: boolean; // Preload next track in playlist for gapless playback (default: true)
   mediaSession?: boolean; // Integrate with OS Media Session API (default: true)
   persistState?: boolean | PersistenceOptions; // Persist user settings to localStorage (default: false)
@@ -63,6 +68,7 @@ export interface HoregPlayerOptions {
   onPlaylistChange?: (playlist: Track[], currentIndex: number) => void;
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onBassChange?: (bassLevel: number) => void;
+  onEqChange?: (preset: EqPreset) => void;
   onEnded?: (track: Track) => void;
   onError?: (error: MediaError | Error) => void;
 }
