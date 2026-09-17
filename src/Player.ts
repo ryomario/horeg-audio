@@ -106,7 +106,7 @@ export class HoregAudio {
       onPrevClick: () => this.prev(),
       onNextClick: () => this.next(),
       onSeek: (seconds) => this.seek(seconds),
-      onVolumeChange: (vol) => this.setVolume(vol),
+      onVolumeChange: (vol) => this.setVolume(vol, false),
       onBassChange: (db) => this.setBass(db),
       onMuteToggle: () => {
         const isMuted = this.audioEngine.toggleMute();
@@ -299,9 +299,9 @@ export class HoregAudio {
     this.audioEngine.seek(seconds);
   }
 
-  public setVolume(level: number): void {
+  public setVolume(level: number, updateSlider: boolean = true): void {
     this.audioEngine.setVolume(level);
-    this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted());
+    this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted(), updateSlider);
     this.savePersistedState();
   }
 

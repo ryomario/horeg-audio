@@ -741,8 +741,10 @@ export class UI {
     this.bufferBar.style.width = `${clamp(percent, 0, 100)}%`;
   }
 
-  public updateVolume(volume: number, isMuted: boolean): void {
-    this.volumeSlider.value = volume.toString();
+  public updateVolume(volume: number, isMuted: boolean, updateSlider: boolean = true): void {
+    if (updateSlider && Math.abs(parseFloat(this.volumeSlider.value) - volume) > 0.001) {
+      this.volumeSlider.value = volume.toString();
+    }
     const percent = Math.round(volume * 100);
 
     if (isMuted || volume === 0) {

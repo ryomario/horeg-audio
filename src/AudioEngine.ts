@@ -319,11 +319,11 @@ export class AudioEngine {
   }
 
   public isMuted(): boolean {
-    return this.audio.muted || this.audio.volume === 0;
+    return this.audio.muted || this.volumeLevel === 0;
   }
 
   public getVolume(): number {
-    return this.audio.volume;
+    return this.volumeLevel;
   }
 
   public getLoop(): LoopMode {
