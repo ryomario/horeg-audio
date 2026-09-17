@@ -81,6 +81,168 @@ function findAudioFiles(dir, depth = 0) {
   return results;
 }
 
+// Duration extractor in pure Node.js
+function estimateDuration(fileSizeBytes) {
+  const sec = Math.round((fileSizeBytes * 8) / (160 * 1000));
+  return Math.max(10, Math.min(3600, sec));
+}
+
+function getAudioDuration(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(16384);
+    const bytesRead = fs.readSync(fd, buffer, 0, 16384, 0);
+    fs.closeSync(fd);
+
+    if (bytesRead < 44) return estimateDuration(stat.size);
+
+    // 1. Check WAV format
+    if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WAVE') {
+      const byteRate = buffer.readUInt32LE(28);
+      let dataSize = stat.size - 44;
+      let offset = 12;
+      while (offset + 8 <= bytesRead) {
+        const chunkId = buffer.toString('ascii', offset, offset + 4);
+        const chunkSize = buffer.readUInt32LE(offset + 4);
+        if (chunkId === 'data') {
+          dataSize = chunkSize;
+          break;
+        }
+        offset += 8 + chunkSize;
+      }
+      if (byteRate > 0) {
+        return Math.round(dataSize / byteRate);
+      }
+    }
+
+    // 2. Check MP3 format (skip ID3v2 tag if present)
+    let offset = 0;
+    if (buffer.toString('ascii', 0, 3) === 'ID3') {
+      const synchsafeSize = ((buffer[6] & 0x7F) << 21) |
+                            ((buffer[7] & 0x7F) << 14) |
+                            ((buffer[8] & 0x7F) << 7) |
+                            (buffer[9] & 0x7F);
+      offset = 10 + synchsafeSize;
+    }
+
+    let frameBuf = buffer;
+    let frameOffset = offset;
+    if (offset + 512 > bytesRead && offset < stat.size) {
+      const fd2 = fs.openSync(filePath, 'r');
+      frameBuf = Buffer.alloc(8192);
+      fs.readSync(fd2, frameBuf, 0, 8192, offset);
+      fs.closeSync(fd2);
+      frameOffset = 0;
+    }
+
+    for (let i = frameOffset; i < frameBuf.length - 4; i++) {
+      if (frameBuf[i] === 0xFF && (frameBuf[i + 1] & 0xE0) === 0xE0) {
+        const bitrateIdx = (frameBuf[i + 2] >> 4) & 0x0F;
+        const sampleRateIdx = (frameBuf[i + 2] >> 2) & 0x03;
+        const sampleRates = [44100, 48000, 32000];
+        const sampleRate = sampleRates[sampleRateIdx] || 44100;
+
+        // Xing / Info header check
+        for (const checkOffset of [i + 36, i + 21, i + 4]) {
+          if (checkOffset + 12 < frameBuf.length) {
+            const tag = frameBuf.toString('ascii', checkOffset, checkOffset + 4);
+            if (tag === 'Xing' || tag === 'Info') {
+              const flags = frameBuf.readUInt32BE(checkOffset + 4);
+              if (flags & 0x01) {
+                const totalFrames = frameBuf.readUInt32BE(checkOffset + 8);
+                const durationSec = (totalFrames * 1152) / sampleRate;
+                if (durationSec > 0 && durationSec < 36000) {
+                  return Math.round(durationSec);
+                }
+              }
+            }
+          }
+        }
+
+        const bitrates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+        const bitrateKbps = bitrates[bitrateIdx];
+        if (bitrateKbps && bitrateKbps > 0) {
+          const audioBytes = Math.max(0, stat.size - offset);
+          const durationSec = (audioBytes * 8) / (bitrateKbps * 1000);
+          if (durationSec > 0 && durationSec < 36000) {
+            return Math.round(durationSec);
+          }
+        }
+        break;
+      }
+    }
+
+    return estimateDuration(stat.size);
+  } catch (_) {
+    return 180;
+  }
+}
+
+// 128px Base64 Thumbnail Generator
+function generateCoverThumbnail(filePath, title, idx, baseDir) {
+  // Check if directory has existing album art
+  const trackDir = path.dirname(filePath);
+  const candidateDirs = [trackDir];
+  if (trackDir !== baseDir) {
+    candidateDirs.push(baseDir);
+  }
+
+  const imageNames = [
+    'cover.jpg', 'cover.jpeg', 'cover.png', 'cover.webp',
+    'folder.jpg', 'folder.png', 'album.jpg', 'album.png',
+    'artwork.jpg', 'artwork.png'
+  ];
+
+  for (const dir of candidateDirs) {
+    for (const imgName of imageNames) {
+      try {
+        const fullImgPath = path.join(dir, imgName);
+        if (fs.existsSync(fullImgPath)) {
+          const stat = fs.statSync(fullImgPath);
+          if (stat.isFile() && stat.size < 2 * 1024 * 1024) {
+            const ext = path.extname(imgName).toLowerCase();
+            const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+            const b64 = fs.readFileSync(fullImgPath).toString('base64');
+            return `data:${mime};base64,${b64}`;
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // Generate 128px SVG base64 thumbnail
+  const hues = [38, 12, 185, 275, 335, 155, 210];
+  const hue = hues[idx % hues.length];
+  const primaryColor = `hsl(${hue}, 96%, 54%)`;
+  const darkColor = `hsl(${hue}, 80%, 14%)`;
+  const cleanTitle = (title || 'Track').slice(0, 14).replace(/[<>&"]/g, '');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <radialGradient id="g${idx}" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="${primaryColor}"/>
+      <stop offset="55%" stop-color="${darkColor}"/>
+      <stop offset="100%" stop-color="#090a0f"/>
+    </radialGradient>
+    <linearGradient id="edge${idx}" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${primaryColor}"/>
+      <stop offset="100%" stop-color="#222430"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="14" fill="#0d0e14"/>
+  <circle cx="64" cy="64" r="52" fill="#13141f" stroke="url(#edge${idx})" stroke-width="2"/>
+  <circle cx="64" cy="64" r="42" fill="none" stroke="#252736" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <circle cx="64" cy="64" r="32" fill="url(#g${idx})"/>
+  <circle cx="64" cy="64" r="15" fill="#090a0f" stroke="${primaryColor}" stroke-width="2"/>
+  <circle cx="64" cy="64" r="5" fill="${primaryColor}"/>
+  <text x="64" y="112" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="9" font-weight="700" fill="#a1a1aa" text-anchor="middle">${cleanTitle}</text>
+  <text x="64" y="24" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="8" font-weight="900" fill="${primaryColor}" text-anchor="middle" letter-spacing="1">HOREG RIG</text>
+</svg>`;
+
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
 if (customAudioDir) {
   try {
     if (fs.existsSync(customAudioDir) && fs.statSync(customAudioDir).isDirectory()) {
@@ -93,11 +255,16 @@ if (customAudioDir) {
         const parentDir = path.basename(path.dirname(fullPath));
         const rootDir = path.basename(customAudioDir);
         const artist = parentDir && parentDir !== rootDir ? parentDir : (rootDir || 'Local Audio');
+        const duration = getAudioDuration(fullPath);
+        const coverArt = generateCoverThumbnail(fullPath, title, idx, customAudioDir);
+
         return {
           id: idx + 1,
           title,
           artist,
           album: rootDir || 'Horeg Audio Files',
+          duration,
+          coverArt,
           src: `/audio-files/${encodeURI(relPath)}`
         };
       });
@@ -311,10 +478,10 @@ server.listen(port, () => {
 ║   🔊  HOREG AUDIO PLAYER - Sound System Glerr             ║
 ║                                                           ║
 ║   Web Player running at:                                  ║
-║   ➜  ${url.padEnd(45, ' ')}║
+║   ➜  ${url.padEnd(53, ' ')}║
 ║                                                           ║
 ║   Playlist:                                               ║
-║   ➜  ${playlistInfo.slice(0, 45).padEnd(45, ' ')}║
+║   ➜  ${playlistInfo.slice(0, 53).padEnd(53, ' ')}║
 ║                                                           ║
 ║   Press Ctrl+C to stop                                    ║
 ╚═══════════════════════════════════════════════════════════╝
