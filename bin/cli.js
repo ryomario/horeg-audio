@@ -179,9 +179,138 @@ function getAudioDuration(filePath) {
   }
 }
 
+// Extract embedded artwork directly from audio file metadata (ID3v2 APIC or FLAC Picture)
+function extractEmbeddedCoverArt(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size < 20) return null;
+
+    const fd = fs.openSync(filePath, 'r');
+    const headBuf = Buffer.alloc(10);
+    fs.readSync(fd, headBuf, 0, 10, 0);
+
+    // Case 1: ID3v2 in MP3 / AAC / WAV
+    if (headBuf.toString('ascii', 0, 3) === 'ID3') {
+      const majorVersion = headBuf[3];
+      const tagSize = ((headBuf[6] & 0x7F) << 21) |
+                      ((headBuf[7] & 0x7F) << 14) |
+                      ((headBuf[8] & 0x7F) << 7) |
+                      (headBuf[9] & 0x7F);
+
+      // Only read tag if within reasonable bounds (< 12 MB)
+      if (tagSize > 0 && tagSize < 12 * 1024 * 1024) {
+        const fullTag = Buffer.alloc(tagSize + 10);
+        fs.readSync(fd, fullTag, 0, tagSize + 10, 0);
+        fs.closeSync(fd);
+
+        if (majorVersion === 3 || majorVersion === 4) {
+          let offset = 10;
+          const end = fullTag.length;
+          while (offset + 10 < end) {
+            const frameId = fullTag.toString('ascii', offset, offset + 4);
+            if (frameId.charCodeAt(0) === 0) break; // ID3 padding
+
+            let frameSize;
+            if (majorVersion === 4) {
+              frameSize = ((fullTag[offset + 4] & 0x7F) << 21) |
+                          ((fullTag[offset + 5] & 0x7F) << 14) |
+                          ((fullTag[offset + 6] & 0x7F) << 7) |
+                          (fullTag[offset + 7] & 0x7F);
+            } else {
+              frameSize = fullTag.readUInt32BE(offset + 4);
+            }
+
+            if (frameSize <= 0 || offset + 10 + frameSize > end) break;
+
+            if (frameId === 'APIC') {
+              const contentStart = offset + 10;
+              const encoding = fullTag[contentStart];
+              let p = contentStart + 1;
+
+              // Parse MIME type (null-terminated ASCII)
+              while (p < contentStart + frameSize && fullTag[p] !== 0) p++;
+              let mime = fullTag.toString('ascii', contentStart + 1, p) || 'image/jpeg';
+              p++; // skip null terminator
+
+              p++; // skip picture type (1 byte)
+
+              // Skip description
+              if (encoding === 1 || encoding === 2) {
+                // UTF-16: two null bytes
+                while (p + 1 < contentStart + frameSize && !(fullTag[p] === 0 && fullTag[p + 1] === 0)) {
+                  p += 2;
+                }
+                p += 2;
+              } else {
+                // ISO-8859-1 or UTF-8: single null byte
+                while (p < contentStart + frameSize && fullTag[p] !== 0) p++;
+                p++;
+              }
+
+              if (p < contentStart + frameSize) {
+                const imgData = fullTag.subarray(p, contentStart + frameSize);
+                // Verify magic bytes
+                if (imgData[0] === 0xFF && imgData[1] === 0xD8) mime = 'image/jpeg';
+                else if (imgData[0] === 0x89 && imgData[1] === 0x50) mime = 'image/png';
+                else if (imgData[0] === 0x52 && imgData[1] === 0x49) mime = 'image/webp';
+
+                return `data:${mime};base64,${imgData.toString('base64')}`;
+              }
+            }
+            offset += 10 + frameSize;
+          }
+        }
+        return null;
+      }
+    }
+
+    // Case 2: FLAC Picture Block
+    if (headBuf.toString('ascii', 0, 4) === 'fLaC') {
+      const flacHeader = Buffer.alloc(Math.min(stat.size, 10 * 1024 * 1024));
+      fs.readSync(fd, flacHeader, 0, flacHeader.length, 0);
+      fs.closeSync(fd);
+
+      let offset = 4;
+      while (offset + 4 <= flacHeader.length) {
+        const isLast = (flacHeader[offset] & 0x80) !== 0;
+        const blockType = flacHeader[offset] & 0x7F;
+        const blockLength = (flacHeader[offset + 1] << 16) | (flacHeader[offset + 2] << 8) | flacHeader[offset + 3];
+        offset += 4;
+
+        if (blockType === 6) { // PICTURE
+          let p = offset + 4; // skip picture type
+          const mimeLen = flacHeader.readUInt32BE(p);
+          p += 4;
+          const mime = flacHeader.toString('ascii', p, p + mimeLen) || 'image/jpeg';
+          p += mimeLen;
+          const descLen = flacHeader.readUInt32BE(p);
+          p += 4 + descLen + 16; // skip description, width, height, etc.
+          const dataLen = flacHeader.readUInt32BE(p);
+          p += 4;
+          const imgData = flacHeader.subarray(p, p + dataLen);
+          return `data:${mime};base64,${imgData.toString('base64')}`;
+        }
+
+        offset += blockLength;
+        if (isLast) break;
+      }
+      return null;
+    }
+
+    fs.closeSync(fd);
+  } catch (_) {}
+  return null;
+}
+
 // 128px Base64 Thumbnail Generator
 function generateCoverThumbnail(filePath, title, idx, baseDir) {
-  // Check if directory has existing album art
+  // 1. Prioritize embedded artwork inside audio file metadata (ID3v2 APIC or FLAC Picture)
+  const embedded = extractEmbeddedCoverArt(filePath);
+  if (embedded) {
+    return embedded;
+  }
+
+  // 2. Check if directory has existing album art
   const trackDir = path.dirname(filePath);
   const candidateDirs = [trackDir];
   if (trackDir !== baseDir) {
