@@ -33,6 +33,15 @@ export interface HoregTheme {
   isLight?: boolean;             // Explicitly declare light mode styling
 }
 
+export interface PersistenceOptions {
+  key?: string;
+  volume?: boolean;
+  bass?: boolean;
+  loop?: boolean;
+  shuffle?: boolean;
+  lastTrack?: boolean;
+}
+
 export interface HoregPlayerOptions {
   container: string | HTMLElement;
   playlist: Track[];
@@ -45,6 +54,9 @@ export interface HoregPlayerOptions {
   enableBassControl?: boolean; // Show/hide UI bass control (default: true)
   maxWidth?: number | string; // Optional container max-width (number in px or CSS string). If not set, container is fluid.
   theme?: HoregTheme;
+  preloadNext?: boolean; // Preload next track in playlist for gapless playback (default: true)
+  mediaSession?: boolean; // Integrate with OS Media Session API (default: true)
+  persistState?: boolean | PersistenceOptions; // Persist user settings to localStorage (default: false)
   onPlay?: (track: Track) => void;
   onPause?: () => void;
   onTrackChange?: (track: Track, index: number) => void;
@@ -67,4 +79,5 @@ export interface HoregPlayerState {
   loop: LoopMode;
   shuffle: boolean;
 }
+
 

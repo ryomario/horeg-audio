@@ -1,8 +1,17 @@
-import { HoregPlayerOptions, HoregTheme, Track, LoopMode } from './types';
+import { HoregPlayerOptions, HoregTheme, Track, LoopMode, PersistenceOptions } from './types';
 import { generateStyles, THEME_PRESETS } from './styles';
 import { AudioEngine, AudioEnergy } from './AudioEngine';
 import { UI } from './UI';
 import { Visualizer } from './visualizer';
+
+interface ResolvedPersistence {
+  key: string;
+  volume: boolean;
+  bass: boolean;
+  loop: boolean;
+  shuffle: boolean;
+  lastTrack: boolean;
+}
 
 export class HoregAudio {
   private container: HTMLElement;
@@ -14,9 +23,13 @@ export class HoregAudio {
   private theme: HoregTheme;
   private boundKeyHandler: (e: KeyboardEvent) => void;
   private onBassChangeCallback?: (bassLevel: number) => void;
+  private persistOpts: ResolvedPersistence | null = null;
+  private isMediaSessionEnabled: boolean = true;
 
   constructor(options: HoregPlayerOptions) {
     this.onBassChangeCallback = options.onBassChange;
+    this.isMediaSessionEnabled = options.mediaSession !== false;
+
     if (typeof options.container === 'string') {
       const el = document.querySelector(options.container);
       if (!el) {
@@ -36,12 +49,55 @@ export class HoregAudio {
       ...(options.theme || {})
     };
 
+    // State persistence setup & restoration
+    if (options.persistState) {
+      const isObj = typeof options.persistState === 'object';
+      const userOpts = isObj ? (options.persistState as PersistenceOptions) : {};
+      this.persistOpts = {
+        key: userOpts.key || 'horeg_audio_state',
+        volume: userOpts.volume !== undefined ? userOpts.volume : true,
+        bass: userOpts.bass !== undefined ? userOpts.bass : true,
+        loop: userOpts.loop !== undefined ? userOpts.loop : true,
+        shuffle: userOpts.shuffle !== undefined ? userOpts.shuffle : true,
+        lastTrack: userOpts.lastTrack !== undefined ? userOpts.lastTrack : true
+      };
+    }
+
+    let initialVolume = options.volume !== undefined ? options.volume : 0.8;
+    let initialBass = options.bassBoost !== undefined ? options.bassBoost : 0;
+    let initialLoop: LoopMode = options.loop || 'all';
+    let initialShuffle: boolean = !!options.shuffle;
+    let initialIndex = options.initialIndex !== undefined ? options.initialIndex : 0;
+
+    if (this.persistOpts && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const raw = localStorage.getItem(this.persistOpts.key);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (this.persistOpts.volume && typeof saved.volume === 'number') initialVolume = saved.volume;
+          if (this.persistOpts.bass && typeof saved.bass === 'number') initialBass = saved.bass;
+          if (this.persistOpts.loop && typeof saved.loop === 'string') initialLoop = saved.loop as LoopMode;
+          if (this.persistOpts.shuffle && typeof saved.shuffle === 'boolean') initialShuffle = saved.shuffle;
+          if (this.persistOpts.lastTrack && typeof saved.lastTrack === 'number') initialIndex = saved.lastTrack;
+        }
+      } catch (_) {}
+    }
+
+    const effectiveOptions: HoregPlayerOptions = {
+      ...options,
+      volume: initialVolume,
+      bassBoost: initialBass,
+      loop: initialLoop,
+      shuffle: initialShuffle,
+      initialIndex
+    };
+
     // 1. Shadow DOM attachment
     this.shadow = this.container.attachShadow({ mode: 'open' });
 
     // 2. Inject encapsulated styles
     this.styleEl = document.createElement('style');
-    this.styleEl.textContent = generateStyles(this.theme, options.maxWidth);
+    this.styleEl.textContent = generateStyles(this.theme, effectiveOptions.maxWidth);
     this.shadow.appendChild(this.styleEl);
 
     // 3. Instantiate UI
@@ -55,17 +111,20 @@ export class HoregAudio {
       onMuteToggle: () => {
         const isMuted = this.audioEngine.toggleMute();
         this.ui.updateVolume(this.audioEngine.getVolume(), isMuted);
+        this.savePersistedState();
       },
       onShuffleToggle: () => {
         const nextShuffle = !this.audioEngine.isShuffle();
         this.audioEngine.setShuffle(nextShuffle);
         this.ui.updateShuffleState(nextShuffle);
+        this.savePersistedState();
       },
       onLoopToggle: () => {
         const currentLoop = this.audioEngine.getLoop();
         const nextLoop: LoopMode = currentLoop === 'all' ? 'one' : currentLoop === 'one' ? 'none' : 'all';
         this.audioEngine.setLoop(nextLoop);
         this.ui.updateLoopState(nextLoop);
+        this.savePersistedState();
       },
       onTrackSelect: (index) => {
         this.loadTrack(index, true);
@@ -80,8 +139,8 @@ export class HoregAudio {
         this.removeTrack(index);
       }
     }, {
-      enableBassControl: options.enableBassControl !== false,
-      initialBass: options.bassBoost !== undefined ? options.bassBoost : 0
+      enableBassControl: effectiveOptions.enableBassControl !== false,
+      initialBass: effectiveOptions.bassBoost !== undefined ? effectiveOptions.bassBoost : 0
     });
 
     this.shadow.appendChild(this.ui.root);
@@ -94,15 +153,17 @@ export class HoregAudio {
     });
 
     // 5. Initialize AudioEngine
-    this.audioEngine = new AudioEngine(options, {
+    this.audioEngine = new AudioEngine(effectiveOptions, {
       onPlay: (track) => {
         this.ui.updatePlayState(true);
         this.visualizer.start();
+        this.updateMediaSessionPlaybackState('playing');
         if (options.onPlay) options.onPlay(track);
       },
       onPause: () => {
         this.ui.updatePlayState(false);
         this.visualizer.stop();
+        this.updateMediaSessionPlaybackState('paused');
         if (options.onPause) options.onPause();
       },
       onTrackChange: (track, index) => {
@@ -110,6 +171,8 @@ export class HoregAudio {
         const playlist = this.audioEngine ? this.audioEngine.getPlaylist() : (options.playlist || []);
         this.ui.renderPlaylist(playlist, index);
         this.ui.updateProgress(0, track.duration || 0);
+        this.updateMediaSession(track);
+        this.savePersistedState();
         if (options.onTrackChange) options.onTrackChange(track, index);
       },
       onPlaylistChange: (playlist, index) => {
@@ -118,6 +181,17 @@ export class HoregAudio {
       },
       onTimeUpdate: (currentTime, duration) => {
         this.ui.updateProgress(currentTime, duration);
+        if (this.isMediaSessionEnabled && 'mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
+          try {
+            if (duration > 0 && currentTime <= duration) {
+              navigator.mediaSession.setPositionState({
+                duration,
+                playbackRate: 1,
+                position: Math.min(currentTime, duration)
+              });
+            }
+          } catch (_) {}
+        }
         if (options.onTimeUpdate) options.onTimeUpdate(currentTime, duration);
       },
       onBufferUpdate: (percent) => {
@@ -125,11 +199,13 @@ export class HoregAudio {
       },
       onEnded: (track) => {
         this.visualizer.stop();
+        this.updateMediaSessionPlaybackState('paused');
         if (options.onEnded) options.onEnded(track);
       },
       onError: (err) => {
         this.ui.updatePlayState(false);
         this.visualizer.stop();
+        this.updateMediaSessionPlaybackState('none');
         if (options.onError) options.onError(err);
       }
     });
@@ -147,7 +223,11 @@ export class HoregAudio {
     if (currentTrack) {
       this.ui.updateTrackInfo(currentTrack);
       this.ui.renderPlaylist(this.audioEngine.getPlaylist(), this.audioEngine.getCurrentIndex());
+      this.updateMediaSession(currentTrack);
     }
+
+    // Initialize Media Session OS action handlers
+    this.setupMediaSession();
 
     // Keyboard controls when container is active
     this.boundKeyHandler = this.handleKeyDown.bind(this);
@@ -222,6 +302,7 @@ export class HoregAudio {
   public setVolume(level: number): void {
     this.audioEngine.setVolume(level);
     this.ui.updateVolume(this.audioEngine.getVolume(), this.audioEngine.isMuted());
+    this.savePersistedState();
   }
 
   public setBass(gainDb: number): void {
@@ -231,6 +312,7 @@ export class HoregAudio {
     if (this.onBassChangeCallback) {
       this.onBassChangeCallback(clamped);
     }
+    this.savePersistedState();
   }
 
   public getBass(): number {
@@ -401,8 +483,73 @@ export class HoregAudio {
     return this.audioEngine.getAudioEnergy();
   }
 
+  private savePersistedState(): void {
+    if (!this.persistOpts || typeof window === 'undefined' || !window.localStorage) return;
+    try {
+      const stateToSave: Record<string, unknown> = {};
+      if (this.persistOpts.volume) stateToSave.volume = this.audioEngine.getVolume();
+      if (this.persistOpts.bass) stateToSave.bass = this.audioEngine.getBassGain();
+      if (this.persistOpts.loop) stateToSave.loop = this.audioEngine.getLoop();
+      if (this.persistOpts.shuffle) stateToSave.shuffle = this.audioEngine.isShuffle();
+      if (this.persistOpts.lastTrack) stateToSave.lastTrack = this.audioEngine.getCurrentIndex();
+      localStorage.setItem(this.persistOpts.key, JSON.stringify(stateToSave));
+    } catch (_) {}
+  }
+
+  private setupMediaSession(): void {
+    if (!this.isMediaSessionEnabled || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.setActionHandler('play', () => this.play());
+      navigator.mediaSession.setActionHandler('pause', () => this.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', () => this.prev());
+      navigator.mediaSession.setActionHandler('nexttrack', () => this.next());
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined && details.seekTime !== null) {
+          this.seek(details.seekTime);
+        }
+      });
+    } catch (_) {}
+  }
+
+  private updateMediaSession(track: Track): void {
+    if (!this.isMediaSessionEnabled || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      const artwork: MediaImage[] = [];
+      if (track.coverArt) {
+        artwork.push({
+          src: track.coverArt,
+          sizes: '512x512',
+          type: 'image/jpeg'
+        });
+      }
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title || 'Horeg Audio',
+        artist: track.artist || 'Horeg Sound System',
+        album: track.album || 'Sound Horeg Audio Player',
+        artwork
+      });
+    } catch (_) {}
+  }
+
+  private updateMediaSessionPlaybackState(state: 'playing' | 'paused' | 'none'): void {
+    if (!this.isMediaSessionEnabled || typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = state;
+    } catch (_) {}
+  }
+
   public destroy(): void {
     this.container.removeEventListener('keydown', this.boundKeyHandler);
+    if (this.isMediaSessionEnabled && typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler('play', null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+        navigator.mediaSession.setActionHandler('seekto', null);
+        navigator.mediaSession.playbackState = 'none';
+      } catch (_) {}
+    }
     this.audioEngine.destroy();
     this.visualizer.destroy();
     this.ui.destroy();

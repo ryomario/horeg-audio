@@ -24,6 +24,7 @@ export interface AudioEnergy {
 
 export class AudioEngine {
   private audio: HTMLAudioElement;
+  private preloadAudio: HTMLAudioElement | null = null;
   private playlist: Track[] = [];
   private currentIndex: number = 0;
   private loopMode: LoopMode = 'all';
@@ -31,11 +32,14 @@ export class AudioEngine {
   private volumeLevel: number = 0.8;
   private previousVolume: number = 0.8;
   private callbacks: AudioEngineCallbacks = {};
+  private preloadEnabled: boolean = true;
+  private isCorsRetrying: boolean = false;
 
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private bassFilter: BiquadFilterNode | null = null;
   private headroomGain: GainNode | null = null;
+  private masterGain: GainNode | null = null;
   private limiterNode: DynamicsCompressorNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private floatFreqData: Float32Array | null = null;
@@ -52,6 +56,7 @@ export class AudioEngine {
     this.shuffleMode = !!options.shuffle;
     this.volumeLevel = options.volume !== undefined ? clamp(options.volume, 0, 1) : 0.8;
     this.currentBassGain = options.bassBoost !== undefined ? clamp(options.bassBoost, -10, 15) : 0;
+    this.preloadEnabled = options.preloadNext !== false;
     this.callbacks = callbacks || {
       onPlay: options.onPlay,
       onPause: options.onPause,
@@ -61,6 +66,13 @@ export class AudioEngine {
       onEnded: options.onEnded,
       onError: options.onError
     };
+
+    if (this.preloadEnabled && typeof Audio !== 'undefined') {
+      try {
+        this.preloadAudio = new Audio();
+        this.preloadAudio.preload = 'auto';
+      } catch (_) {}
+    }
 
     this.audio.volume = this.volumeLevel;
     this.attachEvents();
@@ -171,6 +183,23 @@ export class AudioEngine {
   };
 
   private handleError = (): void => {
+    // Graceful CORS Fallback:
+    // If the browser encountered a media error when crossOrigin was set (e.g. remote CDN blocked CORS),
+    // remove the crossOrigin attribute and reload the audio directly so native playback continues smoothly.
+    if (this.audio.crossOrigin && !this.isCorsRetrying) {
+      this.isCorsRetrying = true;
+      console.warn('[HoregAudio] Remote audio source blocked CORS headers. Retrying in graceful fallback mode without crossOrigin.');
+      this.audio.removeAttribute('crossorigin');
+      const curTrack = this.getCurrentTrack();
+      if (curTrack) {
+        this.audio.src = curTrack.src;
+        this.audio.load();
+        this.play().catch(() => {});
+      }
+      return;
+    }
+
+    this.isCorsRetrying = false;
     const err = this.audio.error || new Error('Unknown audio playback error');
     if (this.callbacks.onError) {
       this.callbacks.onError(err);
@@ -192,7 +221,6 @@ export class AudioEngine {
   public setPlaylist(newPlaylist: Track[], startIndex: number = 0): void {
     this.playlist = [...newPlaylist];
     this.currentIndex = clamp(startIndex, 0, Math.max(0, this.playlist.length - 1));
-    this.loadTrack(this.currentIndex, false);
     if (this.callbacks.onPlaylistChange) {
       this.callbacks.onPlaylistChange([...this.playlist], this.currentIndex);
     }
@@ -204,6 +232,7 @@ export class AudioEngine {
       if (this.callbacks.onTrackChange) {
         this.callbacks.onTrackChange({ title: 'No Track Loaded', src: '' }, 0);
       }
+      this.preloadNextTrack();
     }
   }
 
@@ -220,6 +249,8 @@ export class AudioEngine {
       this.loadTrack(0, autoPlay);
     } else if (autoPlay) {
       this.loadTrack(newIndex, true);
+    } else {
+      this.preloadNextTrack();
     }
 
     return newIndex;
@@ -239,6 +270,8 @@ export class AudioEngine {
       this.loadTrack(0, autoPlay);
     } else if (autoPlay) {
       this.loadTrack(firstAddedIndex, true);
+    } else {
+      this.preloadNextTrack();
     }
   }
 
@@ -264,6 +297,8 @@ export class AudioEngine {
     if (this.callbacks.onPlaylistChange) {
       this.callbacks.onPlaylistChange([...this.playlist], this.currentIndex);
     }
+
+    this.preloadNextTrack();
   }
 
   public getDuration(): number {
@@ -312,6 +347,7 @@ export class AudioEngine {
       }
     }
 
+    this.isCorsRetrying = false;
     this.currentIndex = targetIndex;
     const track = this.playlist[this.currentIndex];
 
@@ -340,6 +376,8 @@ export class AudioEngine {
     if (this.callbacks.onTrackChange) {
       this.callbacks.onTrackChange(track, this.currentIndex);
     }
+
+    this.preloadNextTrack();
 
     if (autoPlay) {
       this.play();
@@ -387,6 +425,11 @@ export class AudioEngine {
       this.headroomGain = this.audioContext.createGain();
       this.applyHeadroom(0);
 
+      // Master gain staging node: provides smooth, click-free audio ramping for volume and mute
+      this.masterGain = this.audioContext.createGain();
+      this.masterGain.gain.setValueAtTime(this.audio.muted ? 0 : this.volumeLevel, this.audioContext.currentTime);
+      this.audio.volume = 1.0;
+
       // Studio Brickwall Limiter (DynamicsCompressorNode):
       // Provides an impenetrable ceiling right before output to guarantee 0% hard digital clipping/crackling
       this.limiterNode = this.audioContext.createDynamicsCompressor();
@@ -398,10 +441,11 @@ export class AudioEngine {
 
       this.sourceNode = this.audioContext.createMediaElementSource(this.audio);
 
-      // Graph: sourceNode -> bassFilter -> headroomGain -> analyser -> limiterNode -> destination
+      // Graph: sourceNode -> bassFilter -> headroomGain -> masterGain -> analyser -> limiterNode -> destination
       this.sourceNode.connect(this.bassFilter);
       this.bassFilter.connect(this.headroomGain);
-      this.headroomGain.connect(this.analyser);
+      this.headroomGain.connect(this.masterGain);
+      this.masterGain.connect(this.analyser);
       this.analyser.connect(this.limiterNode);
       this.limiterNode.connect(this.audioContext.destination);
 
@@ -558,9 +602,23 @@ export class AudioEngine {
     this.audio.currentTime = clamp(seconds, 0, dur || 0);
   }
 
-  public setVolume(level: number): void {
+  public setVolume(level: number, transitionDuration: number = 0.025): void {
     this.volumeLevel = clamp(level, 0, 1);
-    this.audio.volume = this.volumeLevel;
+    if (this.masterGain && this.audioContext && this.audioContext.state !== 'closed') {
+      try {
+        const currentTime = this.audioContext.currentTime;
+        if (typeof this.masterGain.gain.setTargetAtTime === 'function') {
+          this.masterGain.gain.setTargetAtTime(this.volumeLevel, currentTime, transitionDuration);
+        } else {
+          this.masterGain.gain.value = this.volumeLevel;
+        }
+      } catch {
+        this.masterGain.gain.value = this.volumeLevel;
+      }
+      this.audio.volume = 1.0;
+    } else {
+      this.audio.volume = this.volumeLevel;
+    }
     if (this.volumeLevel > 0) {
       this.audio.muted = false;
     }
@@ -569,11 +627,17 @@ export class AudioEngine {
   public toggleMute(): boolean {
     if (this.isMuted()) {
       this.audio.muted = false;
-      this.audio.volume = this.previousVolume || 0.8;
-      this.volumeLevel = this.previousVolume || 0.8;
+      const restoreVol = this.previousVolume || 0.8;
+      this.setVolume(restoreVol, 0.03);
       return false;
     } else {
       this.previousVolume = this.volumeLevel;
+      if (this.masterGain && this.audioContext && this.audioContext.state !== 'closed') {
+        try {
+          const currentTime = this.audioContext.currentTime;
+          this.masterGain.gain.setTargetAtTime(0, currentTime, 0.025);
+        } catch {}
+      }
       this.audio.muted = true;
       return true;
     }
@@ -644,10 +708,37 @@ export class AudioEngine {
 
   public setLoop(mode: LoopMode): void {
     this.loopMode = mode;
+    this.preloadNextTrack();
   }
 
   public setShuffle(shuffle: boolean): void {
     this.shuffleMode = shuffle;
+    this.preloadNextTrack();
+  }
+
+  public getNextTrackIndex(): number | null {
+    if (this.playlist.length <= 1) return null;
+    if (this.loopMode === 'one') return this.currentIndex;
+    if (this.shuffleMode) return null;
+    const nextIdx = this.currentIndex + 1;
+    if (nextIdx < this.playlist.length) return nextIdx;
+    if (this.loopMode === 'all') return 0;
+    return null;
+  }
+
+  public preloadNextTrack(): void {
+    if (!this.preloadEnabled || !this.preloadAudio || this.playlist.length <= 1) return;
+    const nextIdx = this.getNextTrackIndex();
+    if (nextIdx === null) {
+      return;
+    }
+    const nextTrack = this.playlist[nextIdx];
+    if (nextTrack && nextTrack.src && !nextTrack.src.startsWith('blob:') && !nextTrack.src.startsWith('data:')) {
+      if (this.preloadAudio.src !== nextTrack.src) {
+        this.preloadAudio.src = nextTrack.src;
+        this.preloadAudio.load();
+      }
+    }
   }
 
   public setCallbacks(callbacks: AudioEngineCallbacks): void {
@@ -696,6 +787,11 @@ export class AudioEngine {
     this.audio.pause();
     this.audio.src = '';
     this.audio.load();
+    if (this.preloadAudio) {
+      this.preloadAudio.src = '';
+      this.preloadAudio.load();
+      this.preloadAudio = null;
+    }
     if (this.bassFilter) {
       try {
         this.bassFilter.disconnect();
@@ -707,6 +803,12 @@ export class AudioEngine {
         this.headroomGain.disconnect();
       } catch {}
       this.headroomGain = null;
+    }
+    if (this.masterGain) {
+      try {
+        this.masterGain.disconnect();
+      } catch {}
+      this.masterGain = null;
     }
     if (this.limiterNode) {
       try {
