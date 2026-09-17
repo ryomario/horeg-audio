@@ -256,25 +256,6 @@
       <div class="demo-subtitle">Standalone Vanilla TypeScript Audio Player • Shadow DOM Encapsulated</div>
     </div>
 
-    <!-- Theme Switcher Toolbar -->
-    <div class="theme-toolbar">
-      <button class="theme-btn active" id="btn-classic">🔥 Horeg Classic</button>
-      <button class="theme-btn" id="btn-nightclub">⚡ Nightclub Neon</button>
-      <button class="theme-btn" id="btn-stealth">🛡️ Stealth Tactical</button>
-      <button class="theme-btn" id="btn-light">☀️ Horeg Light</button>
-      <button class="theme-btn" id="btn-light-clean">❄️ Light Studio</button>
-      <button class="theme-btn" id="btn-light-minimal">📄 Light Minimal</button>
-    </div>
-
-    <!-- Container Width Tester -->
-    <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-bottom: 16px;">
-      <span style="font-size: 11px; color: #a1a1aa; font-weight: 700; letter-spacing: 0.5px;">CONTAINER WIDTH:</span>
-      <button class="theme-btn active" id="width-fluid" style="padding: 4px 10px; font-size: 11px;">Fluid (100%)</button>
-      <button class="theme-btn" id="width-520" style="padding: 4px 10px; font-size: 11px;">520px</button>
-      <button class="theme-btn" id="width-360" style="padding: 4px 10px; font-size: 11px;">360px (Responsive)</button>
-      <button class="theme-btn" id="width-320" style="padding: 4px 10px; font-size: 11px;">320px (Mobile)</button>
-    </div>
-
     <!-- Player Mount Point -->
     <div id="player-mount" style="width: 100%; transition: max-width 0.3s ease; margin: 0 auto;"></div>
 
@@ -309,13 +290,13 @@
         <button class="api-btn" id="api-remove-last" style="color: #ef4444; border-color: rgba(239,68,68,0.5);">🗑️ Remove Last</button>
       </div>
 
-      <!-- Real-time Decibel Monitor -->
-      <div style="margin-top: 14px; background: #0b0c12; border: 1px solid #1e202e; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-size: 11px;">
-        <div>
-          <span style="color: #71717a;">BASS SPECTRUM (0-170Hz):</span>
-          <span id="meter-db" style="color: #f59e0b; font-weight: 700; margin-left: 6px;">-∞ dBFS</span>
+      <!-- Real-time Decibel Monitor (Fixed Height to prevent vertical jitter) -->
+      <div style="margin-top: 14px; background: #0b0c12; border: 1px solid #1e202e; border-radius: 8px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: monospace; font-size: 11px; height: 44px; min-height: 44px; max-height: 44px; box-sizing: border-box; overflow: hidden; white-space: nowrap;">
+        <div style="flex-shrink: 0; white-space: nowrap;">
+          <span style="color: #71717a;">BASS (0-170Hz):</span>
+          <span id="meter-db" style="color: #f59e0b; font-weight: 700; margin-left: 6px; display: inline-block; min-width: 60px;">-∞ dBFS</span>
         </div>
-        <div>
+        <div style="min-width: 0; flex: 1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           <span style="color: #71717a;">STATUS:</span>
           <span id="meter-status" style="color: #6b7280; font-weight: 700; margin-left: 6px;">IDLE / STAGNANT</span>
         </div>
@@ -328,9 +309,30 @@
 
     <!-- Interactive Playground & Theme Builder Card -->
     <div class="sandbox-card" id="playground-card">
-      <div style="font-size: 14px; font-weight: 800; color: #f59e0b; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+      <div style="font-size: 14px; font-weight: 800; color: #f59e0b; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
         <span>🎛️ INTERACTIVE PLAYGROUND & THEME BUILDER</span>
         <span style="font-size: 10px; background: rgba(245,158,11,0.15); color: #f59e0b; padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(245,158,11,0.3);">LIVE PREVIEW</span>
+      </div>
+
+      <!-- Section: Theme Variant & Container Width -->
+      <div class="builder-section" style="margin-bottom: 12px;">
+        <div class="builder-label">THEME VARIANT PRESETS:</div>
+        <div class="theme-toolbar" style="margin-bottom: 14px; justify-content: flex-start; gap: 8px;">
+          <button class="theme-btn active" id="btn-classic">🔥 Horeg Classic</button>
+          <button class="theme-btn" id="btn-nightclub">⚡ Nightclub Neon</button>
+          <button class="theme-btn" id="btn-stealth">🛡️ Stealth Tactical</button>
+          <button class="theme-btn" id="btn-light">☀️ Horeg Light</button>
+          <button class="theme-btn" id="btn-light-clean">❄️ Light Studio</button>
+          <button class="theme-btn" id="btn-light-minimal">📄 Light Minimal</button>
+        </div>
+
+        <div class="builder-label">CONTAINER WIDTH TESTER:</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <button class="theme-btn active" id="width-fluid" style="padding: 4px 10px; font-size: 11px;">Fluid (100%)</button>
+          <button class="theme-btn" id="width-520" style="padding: 4px 10px; font-size: 11px;">520px</button>
+          <button class="theme-btn" id="width-360" style="padding: 4px 10px; font-size: 11px;">360px (Responsive)</button>
+          <button class="theme-btn" id="width-320" style="padding: 4px 10px; font-size: 11px;">320px (Mobile)</button>
+        </div>
       </div>
 
       <!-- Section: Visualizer Engine & Equalizer Presets -->
@@ -755,18 +757,18 @@
           if (db === undefined || db <= -70) {
             dbEl.textContent = '-∞ dBFS';
             dbEl.style.color = '#71717a';
-            statusEl.textContent = 'HENING / ZERO BASS (STAGNANT)';
+            statusEl.textContent = 'STAGNANT (HENING)';
             statusEl.style.color = '#6b7280';
           } else {
             dbEl.textContent = `${db > 0 ? '+' : ''}${db.toFixed(1)} dBFS`;
             if (db > -42) {
               dbEl.style.color = '#ef4444';
               const punchStr = energy.bassPunch && energy.bassPunch > 0.08 ? ' • ⚡ IMPULSE' : '';
-              statusEl.textContent = `🔥 BASS AKTIF (${db > -22 ? 'HEAVY PUNCH' : 'PUNCHING'})${punchStr} > -42 dBFS`;
+              statusEl.textContent = `🔥 BASS AKTIF (${db > -22 ? 'HEAVY' : 'PUNCH'})${punchStr}`;
               statusEl.style.color = '#ef4444';
             } else {
               dbEl.style.color = '#10b981';
-              statusEl.textContent = 'STAGNANT (MELODI / < -42 dBFS)';
+              statusEl.textContent = 'STAGNANT (MELODI)';
               statusEl.style.color = '#10b981';
             }
           }

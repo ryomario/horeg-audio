@@ -78,11 +78,21 @@ const server = http.createServer((req, res) => {
   const parsedUrl = new URL(req.url, `http://localhost:${port}`);
   let pathname = decodeURIComponent(parsedUrl.pathname);
 
+  // Strip GitHub Pages base path prefix (/horeg-audio or /horeg-audio/...)
+  let relativePath = pathname;
+  if (relativePath === '/horeg-audio') {
+    relativePath = '/';
+  } else if (relativePath.startsWith('/horeg-audio/')) {
+    relativePath = relativePath.slice('/horeg-audio'.length);
+  }
+
   // Default to index.html for root or directories
-  let filePath = path.join(serveDir, pathname);
+  let filePath = path.join(serveDir, relativePath);
 
   // Security: prevent path traversal out of root
-  if (!filePath.startsWith(serveDir)) {
+  const resolvedPath = path.resolve(filePath);
+  const resolvedRoot = path.resolve(serveDir);
+  if (!resolvedPath.startsWith(resolvedRoot)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' });
     res.end('403 Forbidden');
     return;
@@ -92,7 +102,7 @@ const server = http.createServer((req, res) => {
     if (err) {
       // Fallback for SPA routing if index.html exists
       const indexPath = path.join(serveDir, 'index.html');
-      if (fs.existsSync(indexPath) && !path.extname(pathname)) {
+      if (fs.existsSync(indexPath) && !path.extname(relativePath)) {
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
           'Access-Control-Allow-Origin': '*'
