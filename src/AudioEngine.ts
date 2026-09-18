@@ -1,5 +1,7 @@
-import { Track, LoopMode, HoregPlayerOptions, EqPreset, EqBand, EqPresetConfig } from './types';
+import { Track, LoopMode, HoregPlayerOptions, EqPreset, EqBand, EqPresetConfig, RecordingOptions, RecordingResult, RecordingFormat, StreamInfo } from './types';
 import { clamp } from './utils/time';
+import { StreamAdapter } from './stream/StreamAdapter';
+import { encodePcmToWav } from './utils/wav';
 
 export const EQ_PRESETS: Record<EqPreset, EqPresetConfig> = {
   flat: {
@@ -52,6 +54,10 @@ export interface AudioEngineCallbacks {
   onLoadingChange?: (isLoading: boolean) => void;
   onEqChange?: (preset: EqPreset) => void;
   onBandGainChange?: (band: EqBand, gainDb: number) => void;
+  onRecordingStart?: () => void;
+  onRecordingStop?: (result: RecordingResult) => void;
+  onRecordingData?: (chunk: Blob) => void;
+  onStreamTypeDetected?: (info: StreamInfo) => void;
 }
 
 export interface AudioEnergy {
@@ -105,8 +111,34 @@ export class AudioEngine {
   private bassPulseEnvelope: number = 0;
   private bassDbFloor: number = -60;
 
+  // Modern Platform Integrations: Recording & Streaming Adapter
+  private streamAdapter: StreamAdapter;
+  private mediaStreamDestination: MediaStreamAudioDestinationNode | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private isCurrentlyRecording: boolean = false;
+  private recordingStartTime: number = 0;
+  private recordedChunks: Blob[] = [];
+  private pcmNode: ScriptProcessorNode | null = null;
+  private pcmLeftChunks: Float32Array[] = [];
+  private pcmRightChunks: Float32Array[] = [];
+  private currentStreamInfo: StreamInfo = { type: 'direct', isLive: false, url: '' };
+
   constructor(options: HoregPlayerOptions, callbacks: AudioEngineCallbacks = {}) {
     this.audio = new Audio();
+    this.streamAdapter = new StreamAdapter(this.audio, {
+      hlsConfig: options.hlsConfig,
+      onStreamTypeDetected: (info) => {
+        this.currentStreamInfo = info;
+        if (this.callbacks.onStreamTypeDetected) {
+          this.callbacks.onStreamTypeDetected(info);
+        }
+      },
+      onError: (err) => {
+        if (this.callbacks.onError) {
+          this.callbacks.onError(err);
+        }
+      }
+    });
     this.playlist = [...(options.playlist || [])];
     this.currentIndex = options.initialIndex !== undefined ? clamp(options.initialIndex, 0, Math.max(0, this.playlist.length - 1)) : 0;
     this.loopMode = options.loop || 'all';
@@ -131,7 +163,11 @@ export class AudioEngine {
       onEnded: options.onEnded,
       onError: options.onError,
       onEqChange: options.onEqChange,
-      onBandGainChange: options.onBandGainChange
+      onBandGainChange: options.onBandGainChange,
+      onRecordingStart: options.onRecordingStart,
+      onRecordingStop: options.onRecordingStop,
+      onRecordingData: options.onRecordingData,
+      onStreamTypeDetected: options.onStreamTypeDetected
     };
 
     if (this.preloadEnabled && typeof Audio !== 'undefined') {
@@ -369,6 +405,9 @@ export class AudioEngine {
   }
 
   public getDuration(): number {
+    if (this.isLiveStream()) {
+      return Infinity;
+    }
     const dur = this.audio.duration;
     if (dur && !isNaN(dur) && isFinite(dur)) {
       return dur;
@@ -438,7 +477,7 @@ export class AudioEngine {
       this.audio.removeAttribute('crossorigin');
     }
 
-    this.audio.src = track.src;
+    this.currentStreamInfo = this.streamAdapter.load(track.src);
 
     if (this.callbacks.onTrackChange) {
       this.callbacks.onTrackChange(track, this.currentIndex);
@@ -556,6 +595,11 @@ export class AudioEngine {
       this.masterGain.connect(this.analyser);
       this.analyser.connect(this.limiterNode);
       this.limiterNode.connect(this.audioContext.destination);
+
+      if (typeof this.audioContext.createMediaStreamDestination === 'function') {
+        this.mediaStreamDestination = this.audioContext.createMediaStreamDestination();
+        this.limiterNode.connect(this.mediaStreamDestination);
+      }
 
       this.floatFreqData = new Float32Array(this.analyser.frequencyBinCount);
       this.webAudioInitialized = true;
@@ -996,7 +1040,244 @@ export class AudioEngine {
     return { ...this.eqFilters };
   }
 
+  // Streaming Adapter Methods
+  public isLiveStream(): boolean {
+    return this.streamAdapter ? this.streamAdapter.isLive() : false;
+  }
+
+  public getStreamInfo(): StreamInfo {
+    return this.streamAdapter ? this.streamAdapter.getStreamInfo() : this.currentStreamInfo;
+  }
+
+  // Modern Audio Stream Recording Methods
+  public isRecording(): boolean {
+    return this.isCurrentlyRecording;
+  }
+
+  public getRecordingDuration(): number {
+    if (!this.isCurrentlyRecording || this.recordingStartTime === 0) return 0;
+    return (Date.now() - this.recordingStartTime) / 1000;
+  }
+
+  public startRecording(options: RecordingOptions = {}): void {
+    if (this.isCurrentlyRecording) {
+      console.warn('[HoregAudio] Recording is already in progress.');
+      return;
+    }
+
+    this.initWebAudio();
+
+    this.isCurrentlyRecording = true;
+    this.recordingStartTime = Date.now();
+    this.recordedChunks = [];
+    this.pcmLeftChunks = [];
+    this.pcmRightChunks = [];
+
+    // 1. Capture raw PCM samples from post-limiter node for lossless 16-bit WAV export
+    if (this.audioContext && typeof this.audioContext.createScriptProcessor === 'function' && this.limiterNode) {
+      try {
+        this.pcmNode = this.audioContext.createScriptProcessor(4096, 2, 2);
+        this.pcmNode.onaudioprocess = (e) => {
+          if (!this.isCurrentlyRecording) return;
+          const inBuf = e.inputBuffer;
+          const left = inBuf.getChannelData(0);
+          const right = inBuf.numberOfChannels > 1 ? inBuf.getChannelData(1) : left;
+          this.pcmLeftChunks.push(new Float32Array(left));
+          this.pcmRightChunks.push(new Float32Array(right));
+        };
+        this.limiterNode.connect(this.pcmNode);
+        const dummyGain = this.audioContext.createGain();
+        dummyGain.gain.value = 0;
+        this.pcmNode.connect(dummyGain);
+        dummyGain.connect(this.audioContext.destination);
+      } catch (_) {}
+    }
+
+    // 2. MediaRecorder API capture on post-limiter MediaStream
+    const RecorderClass = typeof MediaRecorder !== 'undefined'
+      ? MediaRecorder
+      : (typeof window !== 'undefined' ? (window as any).MediaRecorder : null);
+
+    if (RecorderClass && this.mediaStreamDestination && this.mediaStreamDestination.stream) {
+      try {
+        let mimeType = options.mimeType;
+        if (!mimeType) {
+          if (typeof RecorderClass.isTypeSupported === 'function' && RecorderClass.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+          } else if (typeof RecorderClass.isTypeSupported === 'function' && RecorderClass.isTypeSupported('audio/webm')) {
+            mimeType = 'audio/webm';
+          } else {
+            mimeType = 'audio/webm';
+          }
+        }
+
+        const recOptions: any = {
+          audioBitsPerSecond: options.audioBitsPerSecond || 192000
+        };
+        if (typeof RecorderClass.isTypeSupported === 'function' && RecorderClass.isTypeSupported(mimeType)) {
+          recOptions.mimeType = mimeType;
+        }
+
+        const recorder = new RecorderClass(this.mediaStreamDestination.stream, recOptions);
+        recorder.ondataavailable = (event: any) => {
+          if (event.data && event.data.size > 0) {
+            this.recordedChunks.push(event.data);
+            if (this.callbacks.onRecordingData) {
+              this.callbacks.onRecordingData(event.data);
+            }
+          }
+        };
+        recorder.start(options.timeslice || 100);
+        this.mediaRecorder = recorder;
+      } catch (err) {
+        console.warn('[HoregAudio] MediaRecorder initiation notice:', err);
+      }
+    }
+
+    if (this.callbacks.onRecordingStart) {
+      this.callbacks.onRecordingStart();
+    }
+  }
+
+  public async stopRecording(format: RecordingFormat = 'webm'): Promise<Blob> {
+    if (!this.isCurrentlyRecording) {
+      return new Blob([], { type: format === 'wav' ? 'audio/wav' : 'audio/webm' });
+    }
+
+    this.isCurrentlyRecording = false;
+    const duration = this.getRecordingDuration();
+
+    // Clean up PCM processor node
+    if (this.pcmNode) {
+      try {
+        this.pcmNode.disconnect();
+      } catch (_) {}
+      this.pcmNode.onaudioprocess = null;
+      this.pcmNode = null;
+    }
+
+    let finalBlob: Blob;
+
+    if (format === 'wav') {
+      // Encode captured PCM channels to 16-bit PCM RIFF WAV
+      const totalSamples = this.pcmLeftChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      if (totalSamples > 0) {
+        const mergedLeft = new Float32Array(totalSamples);
+        const mergedRight = new Float32Array(totalSamples);
+        let offset = 0;
+        for (let i = 0; i < this.pcmLeftChunks.length; i++) {
+          mergedLeft.set(this.pcmLeftChunks[i], offset);
+          mergedRight.set(this.pcmRightChunks[i], offset);
+          offset += this.pcmLeftChunks[i].length;
+        }
+        const sampleRate = this.audioContext?.sampleRate || 44100;
+        finalBlob = encodePcmToWav([mergedLeft, mergedRight], sampleRate);
+      } else {
+        finalBlob = new Blob([], { type: 'audio/wav' });
+      }
+
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        try {
+          this.mediaRecorder.stop();
+        } catch (_) {}
+      }
+    } else {
+      // Default / WebM format
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        finalBlob = await new Promise<Blob>((resolve) => {
+          this.mediaRecorder!.onstop = () => {
+            const mime = (this.mediaRecorder && (this.mediaRecorder as any).mimeType) || 'audio/webm';
+            resolve(new Blob(this.recordedChunks, { type: mime }));
+          };
+          try {
+            this.mediaRecorder!.stop();
+          } catch (_) {
+            resolve(new Blob(this.recordedChunks, { type: 'audio/webm' }));
+          }
+        });
+      } else if (this.recordedChunks.length > 0) {
+        finalBlob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+      } else {
+        // Fallback to PCM wav if webm is empty
+        const totalSamples = this.pcmLeftChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+        if (totalSamples > 0) {
+          const mergedLeft = new Float32Array(totalSamples);
+          const mergedRight = new Float32Array(totalSamples);
+          let offset = 0;
+          for (let i = 0; i < this.pcmLeftChunks.length; i++) {
+            mergedLeft.set(this.pcmLeftChunks[i], offset);
+            mergedRight.set(this.pcmRightChunks[i], offset);
+            offset += this.pcmLeftChunks[i].length;
+          }
+          finalBlob = encodePcmToWav([mergedLeft, mergedRight], this.audioContext?.sampleRate || 44100);
+        } else {
+          finalBlob = new Blob([], { type: 'audio/webm' });
+        }
+      }
+    }
+
+    const blobUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(finalBlob)
+      : '';
+
+    const result: RecordingResult = {
+      blob: finalBlob,
+      url: blobUrl,
+      format,
+      duration,
+      download: (filename?: string) => {
+        const name = filename || `horeg-recording-${Date.now()}.${format}`;
+        if (typeof document !== 'undefined') {
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      }
+    };
+
+    if (this.callbacks.onRecordingStop) {
+      this.callbacks.onRecordingStop(result);
+    }
+
+    return finalBlob;
+  }
+
+  public async exportRecording(format: RecordingFormat = 'webm', filename?: string): Promise<RecordingResult> {
+    const blob = await this.stopRecording(format);
+    const duration = this.getRecordingDuration();
+    const blobUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(blob)
+      : '';
+
+    return {
+      blob,
+      url: blobUrl,
+      format,
+      duration,
+      download: (customName?: string) => {
+        const name = customName || filename || `horeg-recording-${Date.now()}.${format}`;
+        if (typeof document !== 'undefined') {
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      }
+    };
+  }
+
   public destroy(): void {
+    if (this.isCurrentlyRecording) {
+      this.stopRecording().catch(() => {});
+    }
+    if (this.streamAdapter) {
+      this.streamAdapter.destroy();
+    }
     this.detachEvents();
     this.audio.pause();
     this.audio.src = '';
@@ -1031,6 +1312,12 @@ export class AudioEngine {
         this.limiterNode.disconnect();
       } catch {}
       this.limiterNode = null;
+    }
+    if (this.mediaStreamDestination) {
+      try {
+        this.mediaStreamDestination.disconnect();
+      } catch {}
+      this.mediaStreamDestination = null;
     }
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(() => {});

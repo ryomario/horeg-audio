@@ -16,10 +16,12 @@ export interface UIEvents {
   onAddTrackFiles?: (files: File[]) => void;
   onAddTrackUrl?: (url: string, title?: string, artist?: string) => void;
   onRemoveTrack?: (index: number) => void;
+  onRecordToggle?: () => void;
 }
 
 export interface UIOptions {
   enableBassControl?: boolean;
+  enableRecordingControl?: boolean;
   initialBass?: number;
 }
 
@@ -35,6 +37,7 @@ export class UI {
   private nextBtn: HTMLButtonElement;
   private shuffleBtn: HTMLButtonElement;
   private loopBtn: HTMLButtonElement;
+  private recordBtn: HTMLButtonElement | null = null;
   private muteBtn: HTMLButtonElement;
   private drawerBtn: HTMLButtonElement;
 
@@ -81,6 +84,7 @@ export class UI {
 
   private isScrubbing: boolean = false;
   private currentDuration: number = 0;
+  private isLive: boolean = false;
   private events: UIEvents;
 
   constructor(events: UIEvents, uiOptions?: UIOptions) {
@@ -179,6 +183,16 @@ export class UI {
     });
     leftControls.appendChild(this.shuffleBtn);
     leftControls.appendChild(this.loopBtn);
+
+    if (uiOptions?.enableRecordingControl) {
+      this.recordBtn = createElement('button', {
+        className: 'horeg-btn horeg-btn-record',
+        attributes: { 'aria-label': 'Record audio output', 'data-tooltip': 'Record stream (R)', type: 'button' },
+        innerHTML: ICONS.record
+      });
+      leftControls.appendChild(this.recordBtn);
+    }
+
     controlsRow.appendChild(leftControls);
 
     // Center: Prev, Play, Next
@@ -401,6 +415,14 @@ export class UI {
     this.loopBtn.addEventListener('click', () => this.events.onLoopToggle());
     this.muteBtn.addEventListener('click', () => this.events.onMuteToggle());
 
+    if (this.recordBtn) {
+      this.recordBtn.addEventListener('click', () => {
+        if (this.events.onRecordToggle) {
+          this.events.onRecordToggle();
+        }
+      });
+    }
+
     this.volumeSlider.addEventListener('input', () => {
       const val = parseFloat(this.volumeSlider.value);
       this.events.onVolumeChange(val);
@@ -582,7 +604,7 @@ export class UI {
 
     // Keyboard support on slider
     this.sliderTrack.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (!this.currentDuration) return;
+      if (!this.currentDuration || this.isLive) return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
         e.preventDefault();
         const cur = (parseFloat(this.fillBar.style.width) / 100) * this.currentDuration;
@@ -596,6 +618,7 @@ export class UI {
   }
 
   private startScrubbing = (e: MouseEvent | TouchEvent): void => {
+    if (this.isLive) return; // scrubbing not supported for live streams
     e.preventDefault();
     this.isScrubbing = true;
     document.body.style.userSelect = 'none';
@@ -725,15 +748,42 @@ export class UI {
     }
   }
 
-  public updateProgress(currentTime: number, duration: number): void {
-    this.currentDuration = duration;
-    this.durationEl.textContent = formatTime(duration);
+  public updateProgress(currentTime: number, duration: number, isLive: boolean = false): void {
+    this.isLive = isLive;
+    this.currentDuration = isLive ? 0 : duration;
 
-    if (!this.isScrubbing) {
-      this.currentTimeEl.textContent = formatTime(currentTime);
-      const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
-      this.fillBar.style.width = `${clamp(percent, 0, 100)}%`;
-      this.sliderTrack.setAttribute('aria-valuenow', Math.round(percent).toString());
+    if (isLive) {
+      this.durationEl.textContent = 'LIVE';
+      this.durationEl.classList.add('horeg-live-badge');
+      if (!this.isScrubbing) {
+        this.currentTimeEl.textContent = formatTime(currentTime);
+        this.fillBar.style.width = '100%';
+        this.sliderTrack.setAttribute('aria-valuenow', '100');
+      }
+    } else {
+      this.durationEl.classList.remove('horeg-live-badge');
+      this.durationEl.textContent = formatTime(duration);
+      if (!this.isScrubbing) {
+        this.currentTimeEl.textContent = formatTime(currentTime);
+        const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+        this.fillBar.style.width = `${clamp(percent, 0, 100)}%`;
+        this.sliderTrack.setAttribute('aria-valuenow', Math.round(percent).toString());
+      }
+    }
+  }
+
+  public updateRecordingState(isRecording: boolean): void {
+    if (!this.recordBtn) return;
+    if (isRecording) {
+      this.recordBtn.classList.add('recording');
+      this.recordBtn.innerHTML = ICONS.stop;
+      this.recordBtn.setAttribute('aria-label', 'Stop recording');
+      this.recordBtn.setAttribute('data-tooltip', 'Stop recording (R)');
+    } else {
+      this.recordBtn.classList.remove('recording');
+      this.recordBtn.innerHTML = ICONS.record;
+      this.recordBtn.setAttribute('aria-label', 'Record audio output');
+      this.recordBtn.setAttribute('data-tooltip', 'Record stream (R)');
     }
   }
 

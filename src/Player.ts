@@ -1,4 +1,4 @@
-import { HoregPlayerOptions, HoregTheme, Track, LoopMode, PersistenceOptions, VisualizerMode, EqPreset, EqBand } from './types';
+import { HoregPlayerOptions, HoregTheme, Track, LoopMode, PersistenceOptions, VisualizerMode, EqPreset, EqBand, RecordingOptions, RecordingResult, RecordingFormat, StreamInfo } from './types';
 import { generateStyles, THEME_PRESETS } from './styles';
 import { AudioEngine, AudioEnergy } from './AudioEngine';
 import { UI } from './UI';
@@ -11,6 +11,10 @@ interface ResolvedPersistence {
   loop: boolean;
   shuffle: boolean;
   lastTrack: boolean;
+  eqPreset: boolean;
+  eqBandGains: boolean;
+  visualizerMode: boolean;
+  playlist: boolean;
 }
 
 export class HoregAudio {
@@ -63,7 +67,11 @@ export class HoregAudio {
         bass: userOpts.bass !== undefined ? userOpts.bass : true,
         loop: userOpts.loop !== undefined ? userOpts.loop : true,
         shuffle: userOpts.shuffle !== undefined ? userOpts.shuffle : true,
-        lastTrack: userOpts.lastTrack !== undefined ? userOpts.lastTrack : true
+        lastTrack: userOpts.lastTrack !== undefined ? userOpts.lastTrack : true,
+        eqPreset: userOpts.eqPreset !== undefined ? userOpts.eqPreset : true,
+        eqBandGains: userOpts.eqBandGains !== undefined ? userOpts.eqBandGains : true,
+        visualizerMode: userOpts.visualizerMode !== undefined ? userOpts.visualizerMode : true,
+        playlist: userOpts.playlist !== undefined ? userOpts.playlist : false
       };
     }
 
@@ -72,10 +80,15 @@ export class HoregAudio {
     let initialLoop: LoopMode = options.loop || 'all';
     let initialShuffle: boolean = !!options.shuffle;
     let initialIndex = options.initialIndex !== undefined ? options.initialIndex : 0;
+    let initialEqPreset: EqPreset = options.eqPreset || 'flat';
+    let initialBandGains: Partial<Record<EqBand, number>> = { ...(options.eqBandGains || {}) };
+    let initialVisualizerMode: VisualizerMode = options.visualizerMode || 'dom';
+    let initialPlaylist = options.playlist ? [...options.playlist] : [];
 
-    if (this.persistOpts && typeof window !== 'undefined' && window.localStorage) {
+    const storage = typeof window !== 'undefined' && window.localStorage ? window.localStorage : (typeof localStorage !== 'undefined' ? localStorage : null);
+    if (this.persistOpts && storage) {
       try {
-        const raw = localStorage.getItem(this.persistOpts.key);
+        const raw = storage.getItem(this.persistOpts.key);
         if (raw) {
           const saved = JSON.parse(raw);
           if (this.persistOpts.volume && typeof saved.volume === 'number') initialVolume = saved.volume;
@@ -83,17 +96,25 @@ export class HoregAudio {
           if (this.persistOpts.loop && typeof saved.loop === 'string') initialLoop = saved.loop as LoopMode;
           if (this.persistOpts.shuffle && typeof saved.shuffle === 'boolean') initialShuffle = saved.shuffle;
           if (this.persistOpts.lastTrack && typeof saved.lastTrack === 'number') initialIndex = saved.lastTrack;
+          if (this.persistOpts.eqPreset && typeof saved.eqPreset === 'string') initialEqPreset = saved.eqPreset as EqPreset;
+          if (this.persistOpts.eqBandGains && typeof saved.eqBandGains === 'object' && saved.eqBandGains) initialBandGains = saved.eqBandGains;
+          if (this.persistOpts.visualizerMode && typeof saved.visualizerMode === 'string') initialVisualizerMode = saved.visualizerMode as VisualizerMode;
+          if (this.persistOpts.playlist && Array.isArray(saved.playlist) && saved.playlist.length > 0) initialPlaylist = saved.playlist;
         }
       } catch (_) {}
     }
 
     const effectiveOptions: HoregPlayerOptions = {
       ...options,
+      playlist: initialPlaylist,
       volume: initialVolume,
       bassBoost: initialBass,
       loop: initialLoop,
       shuffle: initialShuffle,
-      initialIndex
+      initialIndex,
+      eqPreset: initialEqPreset,
+      eqBandGains: initialBandGains,
+      visualizerMode: initialVisualizerMode
     };
 
     // 1. Shadow DOM attachment
@@ -141,9 +162,17 @@ export class HoregAudio {
       },
       onRemoveTrack: (index) => {
         this.removeTrack(index);
+      },
+      onRecordToggle: () => {
+        if (this.isRecording()) {
+          this.stopRecording();
+        } else {
+          this.startRecording();
+        }
       }
     }, {
       enableBassControl: effectiveOptions.enableBassControl !== false,
+      enableRecordingControl: !!effectiveOptions.enableRecordingControl,
       initialBass: effectiveOptions.bassBoost !== undefined ? effectiveOptions.bassBoost : 0
     });
 
@@ -176,7 +205,7 @@ export class HoregAudio {
         this.ui.updateTrackInfo(track);
         const playlist = this.audioEngine ? this.audioEngine.getPlaylist() : (options.playlist || []);
         this.ui.renderPlaylist(playlist, index);
-        this.ui.updateProgress(0, track.duration || 0);
+        this.ui.updateProgress(0, track.duration || 0, this.audioEngine?.isLiveStream() ?? false);
         this.updateMediaSession(track);
         this.savePersistedState();
         if (options.onTrackChange) options.onTrackChange(track, index);
@@ -186,10 +215,10 @@ export class HoregAudio {
         if (options.onPlaylistChange) options.onPlaylistChange(playlist, index);
       },
       onTimeUpdate: (currentTime, duration) => {
-        this.ui.updateProgress(currentTime, duration);
+        this.ui.updateProgress(currentTime, duration, this.audioEngine?.isLiveStream() ?? false);
         if (this.isMediaSessionEnabled && 'mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
           try {
-            if (duration > 0 && currentTime <= duration) {
+            if (duration > 0 && currentTime <= duration && isFinite(duration)) {
               navigator.mediaSession.setPositionState({
                 duration,
                 playbackRate: 1,
@@ -221,6 +250,20 @@ export class HoregAudio {
       onBandGainChange: (band, gainDb) => {
         if (this.onBandGainChangeCallback) this.onBandGainChangeCallback(band, gainDb);
         if (options.onBandGainChange) options.onBandGainChange(band, gainDb);
+      },
+      onRecordingStart: () => {
+        this.ui.updateRecordingState(true);
+        if (options.onRecordingStart) options.onRecordingStart();
+      },
+      onRecordingStop: (result) => {
+        this.ui.updateRecordingState(false);
+        if (options.onRecordingStop) options.onRecordingStop(result);
+      },
+      onRecordingData: (chunk) => {
+        if (options.onRecordingData) options.onRecordingData(chunk);
+      },
+      onStreamTypeDetected: (info) => {
+        if (options.onStreamTypeDetected) options.onStreamTypeDetected(info);
       }
     });
 
@@ -355,6 +398,14 @@ export class HoregAudio {
 
   public loadTrack(indexOrTrack: number | Track, autoPlay: boolean = false): void {
     this.audioEngine.loadTrack(indexOrTrack, autoPlay);
+  }
+
+  public getCurrentIndex(): number {
+    return this.audioEngine.getCurrentIndex();
+  }
+
+  public getCurrentTrack(): Track | null {
+    return this.audioEngine.getCurrentTrack() || null;
   }
 
   public addTrack(track: Track, autoPlay: boolean = false): number {
@@ -518,8 +569,15 @@ export class HoregAudio {
     return this.audioEngine.getAudioEnergy();
   }
 
+  private getStorage(): Storage | null {
+    if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+    if (typeof localStorage !== 'undefined') return localStorage;
+    return null;
+  }
+
   private savePersistedState(): void {
-    if (!this.persistOpts || typeof window === 'undefined' || !window.localStorage) return;
+    const storage = this.getStorage();
+    if (!this.persistOpts || !storage) return;
     try {
       const stateToSave: Record<string, unknown> = {};
       if (this.persistOpts.volume) stateToSave.volume = this.audioEngine.getVolume();
@@ -527,8 +585,55 @@ export class HoregAudio {
       if (this.persistOpts.loop) stateToSave.loop = this.audioEngine.getLoop();
       if (this.persistOpts.shuffle) stateToSave.shuffle = this.audioEngine.isShuffle();
       if (this.persistOpts.lastTrack) stateToSave.lastTrack = this.audioEngine.getCurrentIndex();
-      localStorage.setItem(this.persistOpts.key, JSON.stringify(stateToSave));
+      if (this.persistOpts.eqPreset) stateToSave.eqPreset = this.audioEngine.getEqualizerPreset();
+      if (this.persistOpts.eqBandGains) stateToSave.eqBandGains = this.audioEngine.getBandGains();
+      if (this.persistOpts.visualizerMode) stateToSave.visualizerMode = this.visualizer.getMode();
+      if (this.persistOpts.playlist) stateToSave.playlist = this.audioEngine.getPlaylist();
+      storage.setItem(this.persistOpts.key, JSON.stringify(stateToSave));
     } catch (_) {}
+  }
+
+  public setPersistence(enabled: boolean, options?: PersistenceOptions): void {
+    if (!enabled) {
+      this.persistOpts = null;
+    } else {
+      const userOpts = options || {};
+      this.persistOpts = {
+        key: userOpts.key || (this.persistOpts?.key || 'horeg_audio_state'),
+        volume: userOpts.volume !== undefined ? userOpts.volume : true,
+        bass: userOpts.bass !== undefined ? userOpts.bass : true,
+        loop: userOpts.loop !== undefined ? userOpts.loop : true,
+        shuffle: userOpts.shuffle !== undefined ? userOpts.shuffle : true,
+        lastTrack: userOpts.lastTrack !== undefined ? userOpts.lastTrack : true,
+        eqPreset: userOpts.eqPreset !== undefined ? userOpts.eqPreset : true,
+        eqBandGains: userOpts.eqBandGains !== undefined ? userOpts.eqBandGains : true,
+        visualizerMode: userOpts.visualizerMode !== undefined ? userOpts.visualizerMode : true,
+        playlist: userOpts.playlist !== undefined ? userOpts.playlist : false
+      };
+      this.savePersistedState();
+    }
+  }
+
+  public clearPersistedState(): void {
+    const storage = this.getStorage();
+    if (this.persistOpts && storage) {
+      try {
+        storage.removeItem(this.persistOpts.key);
+      } catch (_) {}
+    }
+  }
+
+  public getPersistedState(): Record<string, unknown> | null {
+    const storage = this.getStorage();
+    if (this.persistOpts && storage) {
+      try {
+        const raw = storage.getItem(this.persistOpts.key);
+        return raw ? JSON.parse(raw) : null;
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
   }
 
   private setupMediaSession(): void {
@@ -543,7 +648,48 @@ export class HoregAudio {
           this.seek(details.seekTime);
         }
       });
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const offset = details?.seekOffset || 10;
+        this.seek(Math.max(0, this.getCurrentTime() - offset));
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const offset = details?.seekOffset || 10;
+        this.seek(this.getCurrentTime() + offset);
+      });
+      navigator.mediaSession.setActionHandler('stop', () => {
+        this.pause();
+        this.seek(0);
+      });
     } catch (_) {}
+  }
+
+  public setMediaSessionEnabled(enabled: boolean): void {
+    this.isMediaSessionEnabled = enabled;
+    if (enabled) {
+      this.setupMediaSession();
+      const currentTrack = this.audioEngine.getCurrentTrack();
+      if (currentTrack) {
+        this.updateMediaSession(currentTrack);
+      }
+    } else {
+      this.cleanupMediaSession();
+    }
+  }
+
+  private cleanupMediaSession(): void {
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler('play', null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+        navigator.mediaSession.setActionHandler('seekto', null);
+        navigator.mediaSession.setActionHandler('seekbackward', null);
+        navigator.mediaSession.setActionHandler('seekforward', null);
+        navigator.mediaSession.setActionHandler('stop', null);
+        navigator.mediaSession.playbackState = 'none';
+      } catch (_) {}
+    }
   }
 
   private updateMediaSession(track: Track): void {
@@ -568,6 +714,7 @@ export class HoregAudio {
 
   public setEqualizerPreset(preset: EqPreset): void {
     this.audioEngine.setEqualizerPreset(preset);
+    this.savePersistedState();
   }
 
   public getEqualizerPreset(): EqPreset {
@@ -584,6 +731,7 @@ export class HoregAudio {
 
   public setBandGain(band: EqBand, db: number): void {
     this.audioEngine.setBandGain(band, db);
+    this.savePersistedState();
   }
 
   public getBandGain(band: EqBand): number {
@@ -604,10 +752,41 @@ export class HoregAudio {
 
   public setVisualizerMode(mode: VisualizerMode): void {
     this.visualizer.setMode(mode);
+    this.savePersistedState();
   }
 
   public getVisualizerMode(): VisualizerMode {
     return this.visualizer.getMode();
+  }
+
+  // Streaming Adapter Methods
+  public isLiveStream(): boolean {
+    return this.audioEngine.isLiveStream();
+  }
+
+  public getStreamInfo(): StreamInfo {
+    return this.audioEngine.getStreamInfo();
+  }
+
+  // Modern Audio Stream Recording Methods
+  public isRecording(): boolean {
+    return this.audioEngine.isRecording();
+  }
+
+  public getRecordingDuration(): number {
+    return this.audioEngine.getRecordingDuration();
+  }
+
+  public startRecording(options?: RecordingOptions): void {
+    this.audioEngine.startRecording(options);
+  }
+
+  public stopRecording(format?: RecordingFormat): Promise<Blob> {
+    return this.audioEngine.stopRecording(format);
+  }
+
+  public exportRecording(format?: RecordingFormat, filename?: string): Promise<RecordingResult> {
+    return this.audioEngine.exportRecording(format, filename);
   }
 
   private updateMediaSessionPlaybackState(state: 'playing' | 'paused' | 'none'): void {
@@ -620,16 +799,7 @@ export class HoregAudio {
 
   public destroy(): void {
     this.container.removeEventListener('keydown', this.boundKeyHandler);
-    if (this.isMediaSessionEnabled && typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-      try {
-        navigator.mediaSession.setActionHandler('play', null);
-        navigator.mediaSession.setActionHandler('pause', null);
-        navigator.mediaSession.setActionHandler('previoustrack', null);
-        navigator.mediaSession.setActionHandler('nexttrack', null);
-        navigator.mediaSession.setActionHandler('seekto', null);
-        navigator.mediaSession.playbackState = 'none';
-      } catch (_) {}
-    }
+    this.cleanupMediaSession();
     this.audioEngine.destroy();
     this.visualizer.destroy();
     this.ui.destroy();

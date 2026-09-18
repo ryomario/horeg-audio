@@ -89,3 +89,6 @@ export function createVuePlayer(Vue: any) {
     }
   });
 }
+
+export * from './stream/StreamAdapter';
+export * from './utils/wav';

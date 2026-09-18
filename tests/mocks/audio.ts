@@ -56,9 +56,24 @@ export class MockDynamicsCompressorNode extends MockAudioNode {
   release = new MockAudioParam(0.080);
 }
 
+export class MockMediaStreamDestinationNode extends MockAudioNode {
+  stream = {
+    id: 'mock-stream-id',
+    active: true,
+    getAudioTracks: () => [{ id: 'track-1', kind: 'audio', stop: () => {} }],
+    getTracks: () => [{ id: 'track-1', kind: 'audio', stop: () => {} }]
+  };
+}
+
+export class MockScriptProcessorNode extends MockAudioNode {
+  bufferSize = 4096;
+  onaudioprocess: ((e: any) => void) | null = null;
+}
+
 export class MockAudioContext {
   state = 'running';
   currentTime = 0;
+  sampleRate = 44100;
   destination = new MockAudioNode();
 
   createGain() {
@@ -81,6 +96,28 @@ export class MockAudioContext {
     return new MockAudioNode();
   }
 
+  createMediaStreamDestination() {
+    return new MockMediaStreamDestinationNode();
+  }
+
+  createScriptProcessor() {
+    return new MockScriptProcessorNode();
+  }
+
+  createBuffer(channels: number, length: number, sampleRate: number) {
+    const data = Array.from({ length: channels }, () => new Float32Array(length));
+    return {
+      numberOfChannels: channels,
+      length,
+      sampleRate,
+      getChannelData: (ch: number) => data[ch] || new Float32Array(length)
+    };
+  }
+
+  decodeAudioData(_arrayBuffer: ArrayBuffer) {
+    return Promise.resolve(this.createBuffer(2, 44100, 44100));
+  }
+
   resume() {
     this.state = 'running';
     return Promise.resolve();
@@ -89,6 +126,43 @@ export class MockAudioContext {
   close() {
     this.state = 'closed';
     return Promise.resolve();
+  }
+}
+
+export class MockMediaRecorder extends EventTarget {
+  state: 'inactive' | 'recording' | 'paused' = 'inactive';
+  stream: any;
+  options: any;
+  mimeType: string;
+  ondataavailable: ((e: any) => void) | null = null;
+  onstop: ((e: any) => void) | null = null;
+  onstart: ((e: any) => void) | null = null;
+
+  static isTypeSupported(_mimeType: string) {
+    return true;
+  }
+
+  constructor(stream: any, options: any = {}) {
+    super();
+    this.stream = stream;
+    this.options = options;
+    this.mimeType = options.mimeType || 'audio/webm';
+  }
+
+  start(_timeslice?: number) {
+    this.state = 'recording';
+    if (this.onstart) this.onstart(new Event('start'));
+    this.dispatchEvent(new Event('start'));
+  }
+
+  stop() {
+    this.state = 'inactive';
+    if (this.ondataavailable) {
+      this.ondataavailable({ data: new Blob([new Uint8Array([1, 2, 3])], { type: this.mimeType }) });
+    }
+    this.dispatchEvent(new CustomEvent('dataavailable', { detail: { data: new Blob([new Uint8Array([1, 2, 3])], { type: this.mimeType }) } }));
+    if (this.onstop) this.onstop(new Event('stop'));
+    this.dispatchEvent(new Event('stop'));
   }
 }
 
@@ -122,6 +196,12 @@ export class MockHTMLAudioElement extends EventTarget {
     return this.attrs[name.toLowerCase()] || null;
   }
 
+  canPlayType(type: string): CanPlayTypeResult {
+    if (type.includes('mpegurl') || type.includes('m3u8')) return 'maybe';
+    if (type.includes('audio/mp3') || type.includes('audio/wav')) return 'probably';
+    return '';
+  }
+
   play() {
     this.paused = false;
     this.dispatchEvent(new Event('play'));
@@ -136,8 +216,60 @@ export class MockHTMLAudioElement extends EventTarget {
   load() {}
 }
 
+export class MockMediaSession {
+  metadata: any = null;
+  playbackState: 'none' | 'paused' | 'playing' = 'none';
+  positionState: any = null;
+  handlers: Map<string, Function | null> = new Map();
+
+  setActionHandler(action: string, handler: Function | null) {
+    this.handlers.set(action, handler);
+  }
+
+  setPositionState(state: any) {
+    this.positionState = state;
+  }
+}
+
 export function setupAudioMocks() {
   (globalThis as any).AudioContext = MockAudioContext;
   (globalThis as any).webkitAudioContext = MockAudioContext;
   (globalThis as any).Audio = MockHTMLAudioElement;
+  (globalThis as any).MediaRecorder = MockMediaRecorder;
+
+  if (typeof (globalThis as any).MediaMetadata === 'undefined') {
+    (globalThis as any).MediaMetadata = class MockMediaMetadata {
+      title = '';
+      artist = '';
+      album = '';
+      artwork: any[] = [];
+      constructor(init: any = {}) {
+        Object.assign(this, init);
+      }
+    };
+  }
+
+  if (typeof (globalThis as any).navigator === 'undefined') {
+    (globalThis as any).navigator = {
+      mediaSession: new MockMediaSession()
+    };
+  } else if (!(globalThis as any).navigator.mediaSession) {
+    (globalThis as any).navigator.mediaSession = new MockMediaSession();
+  }
+
+  if (typeof (globalThis as any).localStorage === 'undefined') {
+    const store: Record<string, string> = {};
+    (globalThis as any).localStorage = {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, val: string) => { store[key] = String(val); },
+      removeItem: (key: string) => { delete store[key]; },
+      clear: () => {
+        for (const k in store) {
+          delete store[k];
+        }
+      }
+    };
+  }
 }
+
+
