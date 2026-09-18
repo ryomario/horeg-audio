@@ -1,5 +1,5 @@
 import { AudioEnergy } from './AudioEngine';
-import { VisualizerMode } from './types';
+import { VisualizerMode, HoregTheme } from './types';
 import {
   SubwooferExcursionSimulator,
   StrobeLightingRig,
@@ -52,28 +52,75 @@ export class Visualizer {
   private smoothRight: number = 0;
   private lastTimestamp: number = 0;
 
+  // Active theme configuration for matching glow colors
+  private theme: HoregTheme;
+  private resizeObserver: ResizeObserver | null = null;
+
   constructor(options: VisualizerOptions) {
     this.stageContainer = options.stageContainer;
     this.coverContainer = options.coverContainer || null;
     this.isEnabled = options.enableAnimation !== false;
     this.mode = options.mode || 'dom';
+    this.theme = options.theme || {};
     this.getAudioEnergy = options.getAudioEnergy;
 
     this.excursionSimulator = new SubwooferExcursionSimulator();
     this.strobeRig = new StrobeLightingRig();
 
     this.buildStage();
+    this.setupResizeObserver();
+
+    // Render immediately on page load so canvas is visible right away
+    this.renderIdle();
   }
 
   public setMode(mode: VisualizerMode): void {
     if (this.mode === mode) return;
     this.mode = mode;
     this.buildStage();
-    this.applyExcursion(this.excursionSimulator.getDisplacement(), this.smoothLeft, this.smoothRight);
+    this.renderIdle();
   }
 
   public getMode(): VisualizerMode {
     return this.mode;
+  }
+
+  public setTheme(theme: HoregTheme): void {
+    this.theme = { ...theme };
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setTheme(this.theme);
+      if (!this.isRunning) {
+        this.renderIdle();
+      }
+    }
+  }
+
+  public getTheme(): HoregTheme {
+    return { ...this.theme };
+  }
+
+  public renderIdle(): void {
+    this.applyExcursion(0, 0, 0);
+    if (typeof window !== 'undefined' && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (!this.isRunning) {
+          this.applyExcursion(0, 0, 0);
+        }
+      });
+    }
+  }
+
+  private setupResizeObserver(): void {
+    if (typeof window !== 'undefined' && typeof ResizeObserver !== 'undefined') {
+      try {
+        this.resizeObserver = new ResizeObserver(() => {
+          if (!this.isRunning) {
+            this.renderIdle();
+          }
+        });
+        this.resizeObserver.observe(this.stageContainer);
+      } catch (_) {}
+    }
   }
 
   public getExcursionSimulator(): SubwooferExcursionSimulator {
@@ -96,7 +143,7 @@ export class Visualizer {
     this.stageContainer.innerHTML = '';
 
     if (this.mode === 'canvas') {
-      this.canvasRenderer = new CanvasRenderer();
+      this.canvasRenderer = new CanvasRenderer(undefined, this.theme);
       this.canvasEl = this.canvasRenderer.getCanvas();
       this.stageContainer.appendChild(this.canvasEl);
 
@@ -447,6 +494,10 @@ export class Visualizer {
 
   public destroy(): void {
     this.stop();
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     if (this.canvasRenderer) {
       this.canvasRenderer.destroy();
       this.canvasRenderer = null;

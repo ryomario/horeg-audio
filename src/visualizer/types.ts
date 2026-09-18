@@ -1,4 +1,4 @@
-import { VisualizerMode } from '../types';
+import { VisualizerMode, HoregTheme } from '../types';
 import { AudioEnergy } from '../AudioEngine';
 
 export interface VisualizerEngineOptions {
@@ -6,6 +6,7 @@ export interface VisualizerEngineOptions {
   coverContainer?: HTMLElement;
   enableAnimation?: boolean;
   mode?: VisualizerMode;
+  theme?: HoregTheme;
   getAudioEnergy?: () => AudioEnergy;
 }
 

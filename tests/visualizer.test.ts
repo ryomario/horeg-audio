@@ -180,4 +180,35 @@ describe('CanvasRenderer & Visualizer Integration Tests', () => {
 
     visualizer.destroy();
   });
+
+  it('should support dynamic theme glow colors in CanvasRenderer and Visualizer', () => {
+    const customTheme = {
+      primaryGlowColor: '#00ffcc',
+      accentColor: '#ff00aa',
+      speakerColor: '#111111'
+    };
+
+    const visualizer = new Visualizer({
+      stageContainer: stageContainer as any,
+      mode: 'canvas',
+      theme: customTheme as any
+    });
+
+    const renderer = visualizer.getCanvasRenderer();
+    expect(renderer).toBeDefined();
+
+    // Render idle should execute without throwing
+    expect(() => visualizer.renderIdle()).not.toThrow();
+
+    // Update theme dynamically
+    expect(() => {
+      visualizer.setTheme({
+        primaryGlowColor: '#ff5500',
+        accentColor: '#00aaff'
+      });
+    }).not.toThrow();
+
+    visualizer.destroy();
+  });
 });
+

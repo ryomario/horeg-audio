@@ -154,7 +154,8 @@ export class HoregAudio {
       stageContainer: this.ui.stageContainer,
       coverContainer: this.ui.coverContainer,
       mode: effectiveOptions.visualizerMode || 'dom',
-      enableAnimation: this.theme.enableEqAnimation !== false
+      enableAnimation: this.theme.enableEqAnimation !== false,
+      theme: this.theme
     });
 
     // 5. Initialize AudioEngine
@@ -479,6 +480,7 @@ export class HoregAudio {
       };
     }
     this.styleEl.textContent = generateStyles(this.theme);
+    this.visualizer.setTheme(this.theme);
     if (this.theme.enableEqAnimation !== undefined) {
       this.visualizer.setEnabled(this.theme.enableEqAnimation);
     }
