@@ -164,9 +164,24 @@ describe('CLI & TUI Unit Tests', () => {
       expect(() => player.pause()).not.toThrow();
       expect(player.isPlaying).toBe(false);
 
+      // Process tracking & cleanup
+      expect(player.activePids).toBeInstanceOf(Set);
+      expect(player.activePids.size).toBe(0);
+
       expect(() => player.resume()).not.toThrow();
       expect(() => player.stop()).not.toThrow();
       expect(() => player.destroy()).not.toThrow();
+      expect(player.isPlaying).toBe(false);
+      expect(player.activePids.size).toBe(0);
+    });
+
+    it('should clear previous active processes when changing tracks or stopping', () => {
+      const player = new NodeAudioPlayer();
+      player.activePids.add(9999999);
+      expect(player.activePids.size).toBe(1);
+
+      player.stop();
+      expect(player.activePids.size).toBe(0);
       expect(player.isPlaying).toBe(false);
     });
   });

@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { exec, execSync } from 'child_process';
 import playSound from 'play-sound';
 import soundPlay from 'sound-play';
 
@@ -479,6 +479,7 @@ export class NodeAudioPlayer {
     this.currentPath = null;
     this.volume = 0.8;
     this.isPlaying = false;
+    this.activePids = new Set();
     try {
       this.player = typeof playSound === 'function' ? playSound() : null;
     } catch (_) {
@@ -495,7 +496,6 @@ export class NodeAudioPlayer {
     if (!audioPath || typeof audioPath !== 'string') return;
 
     try {
-      // Primary engine: play-sound package (provides ChildProcess kill control)
       if (this.player) {
         const isWin = process.platform === 'win32';
         const isMac = process.platform === 'darwin';
@@ -508,24 +508,20 @@ export class NodeAudioPlayer {
           opts.afplay = ['-v', String(this.volume)];
         }
 
-        const proc = this.player.play(audioPath, opts, (err) => {
-          if (err && !err.killed) {
-            // Secondary fallback: sound-play package
-            if (this.isPlaying && soundPlay && typeof soundPlay.play === 'function') {
-              soundPlay.play(audioPath, this.volume).catch(() => {});
-            }
+        const proc = this.player.play(audioPath, opts, () => {
+          if (proc && proc.pid) {
+            this.activePids.delete(proc.pid);
+          }
+          if (this.currentProcess === proc) {
+            this.currentProcess = null;
           }
         });
 
-        this.currentProcess = proc;
+        if (proc && proc.pid) {
+          this.activePids.add(proc.pid);
+          this.currentProcess = proc;
+        }
         return;
-      }
-    } catch (_) {}
-
-    // Fallback engine: sound-play package
-    try {
-      if (soundPlay && typeof soundPlay.play === 'function') {
-        soundPlay.play(audioPath, this.volume).catch(() => {});
       }
     } catch (_) {}
   }
@@ -548,11 +544,28 @@ export class NodeAudioPlayer {
   }
 
   stop() {
-    if (this.currentProcess) {
-      try {
-        this.currentProcess.kill();
-      } catch (_) {}
-      this.currentProcess = null;
+    this.isPlaying = false;
+    this.currentProcess = null;
+
+    if (this.activePids.size > 0) {
+      for (const pid of this.activePids) {
+        try {
+          if (process.platform === 'win32') {
+            try {
+              execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+            } catch (_) {}
+          } else {
+            try {
+              process.kill(-pid, 'SIGKILL');
+            } catch (_) {
+              try {
+                process.kill(pid, 'SIGKILL');
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+      this.activePids.clear();
     }
   }
 
@@ -961,6 +974,7 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
     if (process.stdout.isTTY) {
       process.stdout.write('\x1B[?25h');
     }
+    audioPlayer.destroy();
   });
 
   const render = () => {
@@ -1152,8 +1166,10 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
         return;
       }
 
-      // W: open browser
+      // W: open browser & pause terminal audio to prevent double audio playback
       if (key.toLowerCase() === 'w') {
+        state.isPlaying = false;
+        audioPlayer.pause();
         openBrowser();
         render();
         return;
