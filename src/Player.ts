@@ -205,7 +205,7 @@ export class HoregAudio {
         this.ui.updateTrackInfo(track);
         const playlist = this.audioEngine ? this.audioEngine.getPlaylist() : (options.playlist || []);
         this.ui.renderPlaylist(playlist, index);
-        this.ui.updateProgress(0, track.duration || 0);
+        this.ui.updateProgress(0, track.duration || 0, this.audioEngine?.isLiveStream() ?? false);
         this.updateMediaSession(track);
         this.savePersistedState();
         if (options.onTrackChange) options.onTrackChange(track, index);
@@ -215,7 +215,7 @@ export class HoregAudio {
         if (options.onPlaylistChange) options.onPlaylistChange(playlist, index);
       },
       onTimeUpdate: (currentTime, duration) => {
-        this.ui.updateProgress(currentTime, duration);
+        this.ui.updateProgress(currentTime, duration, this.audioEngine?.isLiveStream() ?? false);
         if (this.isMediaSessionEnabled && 'mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
           try {
             if (duration > 0 && currentTime <= duration && isFinite(duration)) {

@@ -84,6 +84,7 @@ export class UI {
 
   private isScrubbing: boolean = false;
   private currentDuration: number = 0;
+  private isLive: boolean = false;
   private events: UIEvents;
 
   constructor(events: UIEvents, uiOptions?: UIOptions) {
@@ -603,7 +604,7 @@ export class UI {
 
     // Keyboard support on slider
     this.sliderTrack.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (!this.currentDuration) return;
+      if (!this.currentDuration || this.isLive) return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
         e.preventDefault();
         const cur = (parseFloat(this.fillBar.style.width) / 100) * this.currentDuration;
@@ -617,6 +618,7 @@ export class UI {
   }
 
   private startScrubbing = (e: MouseEvent | TouchEvent): void => {
+    if (this.isLive) return; // scrubbing not supported for live streams
     e.preventDefault();
     this.isScrubbing = true;
     document.body.style.userSelect = 'none';
@@ -746,9 +748,9 @@ export class UI {
     }
   }
 
-  public updateProgress(currentTime: number, duration: number): void {
-    this.currentDuration = duration;
-    const isLive = duration === Infinity || (duration !== undefined && isNaN(duration));
+  public updateProgress(currentTime: number, duration: number, isLive: boolean = false): void {
+    this.isLive = isLive;
+    this.currentDuration = isLive ? 0 : duration;
 
     if (isLive) {
       this.durationEl.textContent = 'LIVE';
