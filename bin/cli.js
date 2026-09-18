@@ -11,59 +11,47 @@ const __dirname = path.dirname(__filename);
 const packageRoot = path.resolve(__dirname, '..');
 
 // Supported audio formats
-const AUDIO_EXTENSIONS = new Set([
+export const AUDIO_EXTENSIONS = new Set([
   '.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac', '.opus', '.weba', '.wma', '.alac'
 ]);
 
-// Determine arguments
-const args = process.argv.slice(2);
-let port = 3000;
-let customAudioDir = null;
+// 1. Argument Parser
+export function parseCliArgs(rawArgs) {
+  let port = 3000;
+  let customAudioDir = null;
+  let mode = 'tui'; // default is interactive TUI mode
+  let noOpen = false;
+  let showHelp = false;
+  let showVersion = false;
 
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === '-p' || args[i] === '--port') {
-    const p = parseInt(args[i + 1], 10);
-    if (!isNaN(p)) port = p;
-    i++;
-  } else if (args[i] === '-h' || args[i] === '--help') {
-    console.log(`
-🔊 HOREG AUDIO CLI RUNNER
-=========================
-Usage:
-  npx horeg-audio [options] [audio-directory]
-
-Options:
-  -p, --port <port>   Port to run static server (default: 3000)
-  -h, --help          Show help
-
-Examples:
-  npx horeg-audio
-  npx horeg-audio --port 8080
-  npx horeg-audio ./my-audio-folder
-  npx horeg-audio D:\\Music
-`);
-    process.exit(0);
-  } else if (!args[i].startsWith('-')) {
-    customAudioDir = path.resolve(process.cwd(), args[i]);
+  for (let i = 0; i < rawArgs.length; i++) {
+    const arg = rawArgs[i];
+    if (arg === '-p' || arg === '--port') {
+      const p = parseInt(rawArgs[i + 1], 10);
+      if (!isNaN(p)) port = p;
+      i++;
+    } else if (arg === '-w' || arg === '--web') {
+      mode = 'web';
+    } else if (arg === '--tui') {
+      mode = 'tui';
+    } else if (arg === '--no-open') {
+      noOpen = true;
+    } else if (arg === '-h' || arg === '--help') {
+      showHelp = true;
+    } else if (arg === '-v' || arg === '--version') {
+      showVersion = true;
+    } else if (!arg.startsWith('-')) {
+      customAudioDir = path.resolve(process.cwd(), arg);
+    }
   }
+
+  return { port, customAudioDir, mode, noOpen, showHelp, showVersion };
 }
 
-// 1. Web UI serve directory (always dist-demo or demo)
-let serveDir = path.join(packageRoot, 'dist-demo');
-if (!fs.existsSync(serveDir)) {
-  serveDir = path.join(packageRoot, 'demo');
-}
-if (!fs.existsSync(serveDir)) {
-  serveDir = packageRoot;
-}
-
-// 2. Scan audio directory for playlist if provided
-let customPlaylist = [];
-let scannedCount = 0;
-
-function findAudioFiles(dir, depth = 0) {
+// 2. Scan audio directory for playlist recursively
+export function findAudioFiles(dir, depth = 0) {
   let results = [];
-  if (depth > 3) return results;
+  if (depth > 4) return results;
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -82,12 +70,12 @@ function findAudioFiles(dir, depth = 0) {
 }
 
 // Duration extractor in pure Node.js
-function estimateDuration(fileSizeBytes) {
+export function estimateDuration(fileSizeBytes) {
   const sec = Math.round((fileSizeBytes * 8) / (160 * 1000));
   return Math.max(10, Math.min(3600, sec));
 }
 
-function getAudioDuration(filePath) {
+export function getAudioDuration(filePath) {
   try {
     const stat = fs.statSync(filePath);
     const fd = fs.openSync(filePath, 'r');
@@ -180,7 +168,7 @@ function getAudioDuration(filePath) {
 }
 
 // Extract embedded artwork directly from audio file metadata (ID3v2 APIC or FLAC Picture)
-function extractEmbeddedCoverArt(filePath) {
+export function extractEmbeddedCoverArt(filePath) {
   try {
     const stat = fs.statSync(filePath);
     if (stat.size < 20) return null;
@@ -197,7 +185,6 @@ function extractEmbeddedCoverArt(filePath) {
                       ((headBuf[8] & 0x7F) << 7) |
                       (headBuf[9] & 0x7F);
 
-      // Only read tag if within reasonable bounds (< 12 MB)
       if (tagSize > 0 && tagSize < 12 * 1024 * 1024) {
         const fullTag = Buffer.alloc(tagSize + 10);
         fs.readSync(fd, fullTag, 0, tagSize + 10, 0);
@@ -208,7 +195,7 @@ function extractEmbeddedCoverArt(filePath) {
           const end = fullTag.length;
           while (offset + 10 < end) {
             const frameId = fullTag.toString('ascii', offset, offset + 4);
-            if (frameId.charCodeAt(0) === 0) break; // ID3 padding
+            if (frameId.charCodeAt(0) === 0) break;
 
             let frameSize;
             if (majorVersion === 4) {
@@ -227,29 +214,21 @@ function extractEmbeddedCoverArt(filePath) {
               const encoding = fullTag[contentStart];
               let p = contentStart + 1;
 
-              // Parse MIME type (null-terminated ASCII)
               while (p < contentStart + frameSize && fullTag[p] !== 0) p++;
               let mime = fullTag.toString('ascii', contentStart + 1, p) || 'image/jpeg';
-              p++; // skip null terminator
+              p++; // skip null
+              p++; // skip picture type
 
-              p++; // skip picture type (1 byte)
-
-              // Skip description
               if (encoding === 1 || encoding === 2) {
-                // UTF-16: two null bytes
-                while (p + 1 < contentStart + frameSize && !(fullTag[p] === 0 && fullTag[p + 1] === 0)) {
-                  p += 2;
-                }
+                while (p + 1 < contentStart + frameSize && !(fullTag[p] === 0 && fullTag[p + 1] === 0)) p += 2;
                 p += 2;
               } else {
-                // ISO-8859-1 or UTF-8: single null byte
                 while (p < contentStart + frameSize && fullTag[p] !== 0) p++;
                 p++;
               }
 
               if (p < contentStart + frameSize) {
                 const imgData = fullTag.subarray(p, contentStart + frameSize);
-                // Verify magic bytes
                 if (imgData[0] === 0xFF && imgData[1] === 0xD8) mime = 'image/jpeg';
                 else if (imgData[0] === 0x89 && imgData[1] === 0x50) mime = 'image/png';
                 else if (imgData[0] === 0x52 && imgData[1] === 0x49) mime = 'image/webp';
@@ -278,13 +257,13 @@ function extractEmbeddedCoverArt(filePath) {
         offset += 4;
 
         if (blockType === 6) { // PICTURE
-          let p = offset + 4; // skip picture type
+          let p = offset + 4;
           const mimeLen = flacHeader.readUInt32BE(p);
           p += 4;
           const mime = flacHeader.toString('ascii', p, p + mimeLen) || 'image/jpeg';
           p += mimeLen;
           const descLen = flacHeader.readUInt32BE(p);
-          p += 4 + descLen + 16; // skip description, width, height, etc.
+          p += 4 + descLen + 16;
           const dataLen = flacHeader.readUInt32BE(p);
           p += 4;
           const imgData = flacHeader.subarray(p, p + dataLen);
@@ -303,19 +282,13 @@ function extractEmbeddedCoverArt(filePath) {
 }
 
 // 128px Base64 Thumbnail Generator
-function generateCoverThumbnail(filePath, title, idx, baseDir) {
-  // 1. Prioritize embedded artwork inside audio file metadata (ID3v2 APIC or FLAC Picture)
+export function generateCoverThumbnail(filePath, title, idx, baseDir) {
   const embedded = extractEmbeddedCoverArt(filePath);
-  if (embedded) {
-    return embedded;
-  }
+  if (embedded) return embedded;
 
-  // 2. Check if directory has existing album art
   const trackDir = path.dirname(filePath);
   const candidateDirs = [trackDir];
-  if (trackDir !== baseDir) {
-    candidateDirs.push(baseDir);
-  }
+  if (trackDir !== baseDir) candidateDirs.push(baseDir);
 
   const imageNames = [
     'cover.jpg', 'cover.jpeg', 'cover.png', 'cover.webp',
@@ -340,7 +313,6 @@ function generateCoverThumbnail(filePath, title, idx, baseDir) {
     }
   }
 
-  // Generate 128px SVG base64 thumbnail
   const hues = [38, 12, 185, 275, 335, 155, 210];
   const hue = hues[idx % hues.length];
   const primaryColor = `hsl(${hue}, 96%, 54%)`;
@@ -372,39 +344,73 @@ function generateCoverThumbnail(filePath, title, idx, baseDir) {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
-if (customAudioDir) {
-  try {
-    if (fs.existsSync(customAudioDir) && fs.statSync(customAudioDir).isDirectory()) {
-      const audioFiles = findAudioFiles(customAudioDir);
-      scannedCount = audioFiles.length;
-      customPlaylist = audioFiles.map((fullPath, idx) => {
-        const relPath = path.relative(customAudioDir, fullPath).replace(/\\/g, '/');
-        const ext = path.extname(fullPath);
-        const title = path.basename(fullPath, ext);
-        const parentDir = path.basename(path.dirname(fullPath));
-        const rootDir = path.basename(customAudioDir);
-        const artist = parentDir && parentDir !== rootDir ? parentDir : (rootDir || 'Local Audio');
-        const duration = getAudioDuration(fullPath);
-        const coverArt = generateCoverThumbnail(fullPath, title, idx, customAudioDir);
+// Helpers for TUI
+export function formatTime(seconds) {
+  if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
 
-        return {
-          id: idx + 1,
-          title,
-          artist,
-          album: rootDir || 'Horeg Audio Files',
-          duration,
-          coverArt,
-          src: `/audio-files/${encodeURI(relPath)}`
-        };
-      });
-    } else {
-      console.warn(`[HoregAudio] Warning: Folder "${customAudioDir}" not found or not a directory.`);
-      customAudioDir = null;
-    }
-  } catch (e) {
-    console.warn(`[HoregAudio] Warning scanning audio directory:`, e.message);
-    customAudioDir = null;
+export function renderProgressBar(current, duration, width = 32) {
+  const ratio = duration > 0 ? Math.min(1, Math.max(0, current / duration)) : 0;
+  const filled = Math.round(ratio * width);
+  const empty = width - filled;
+  return '█'.repeat(filled) + '░'.repeat(empty);
+}
+
+export function renderAsciiVisualizer(bassLevel = 6, time = 0, isPlaying = true) {
+  if (!isPlaying) {
+    return {
+      subVal: 0,
+      lowVal: 0,
+      midVal: 0,
+      excursionPercent: 0,
+      isStrobe: false,
+      waveLine: '  _  _  _  _  _  _  _  _  _  _  _  _  _  _  _  _  _  _',
+      meterText: '  SUB: [░░░░░░░░]  LOW: [░░░░░░░░]  MID: [░░░░░░░░]  HI: [░░░░░░░░]  TREBLE: [░░░░░░░░]'
+    };
   }
+
+  const tempo = 130;
+  const beatInterval = 60 / tempo;
+  const beatPhase = (time % beatInterval) / beatInterval;
+  const kickImpulse = Math.pow(Math.max(0, 1 - beatPhase * 2.4), 3.2);
+  const bassMultiplier = Math.pow(10, bassLevel / 20);
+
+  const subVal = Math.min(1, (0.22 + kickImpulse * 0.78) * Math.min(2.0, bassMultiplier));
+  const lowVal = Math.min(1, (0.18 + kickImpulse * 0.62) * Math.min(1.8, bassMultiplier * 0.9));
+  const midVal = Math.min(1, 0.28 + Math.sin(time * 9) * 0.25 + kickImpulse * 0.2);
+  const upMidVal = Math.min(1, 0.22 + Math.cos(time * 12) * 0.2);
+  const hiVal = Math.min(1, 0.18 + Math.sin(time * 16) * 0.18);
+  const trebleVal = Math.min(1, 0.14 + Math.cos(time * 20) * 0.14);
+
+  const renderMeter = (val, w = 8) => {
+    const filled = Math.round(val * w);
+    return '█'.repeat(filled) + '░'.repeat(w - filled);
+  };
+
+  const excursionPercent = Math.round(Math.min(1, subVal * 1.05) * 100);
+  const isStrobe = kickImpulse > 0.65;
+
+  const chars = [' ', ' ', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+  const wavePoints = [subVal, lowVal, midVal, upMidVal, hiVal, trebleVal, hiVal, upMidVal, midVal, lowVal, subVal];
+  const waveLine = '  ' + wavePoints.map((v) => {
+    const idx = Math.min(chars.length - 1, Math.floor(v * (chars.length - 1)));
+    return chars[idx];
+  }).join('  ');
+
+  const meterText = `  SUB: [${renderMeter(subVal)}]  LOW: [${renderMeter(lowVal)}]  MID: [${renderMeter(midVal)}]  HI: [${renderMeter(hiVal)}]  TREBLE: [${renderMeter(trebleVal)}]`;
+
+  return {
+    subVal,
+    lowVal,
+    midVal,
+    excursionPercent,
+    isStrobe,
+    waveLine,
+    meterText
+  };
 }
 
 const MIME_TYPES = {
@@ -461,164 +467,517 @@ function streamFileWithRanges(filePath, req, res, contentType) {
   }
 }
 
-const server = http.createServer((req, res) => {
-  const parsedUrl = new URL(req.url, `http://localhost:${port}`);
-  let pathname = decodeURIComponent(parsedUrl.pathname);
+// 3. Main CLI Controller
+export function startCli(argv = process.argv.slice(2)) {
+  const parsed = parseCliArgs(argv);
 
-  // Endpoint 1: Custom audio files serving (/audio-files/...)
-  if (pathname.startsWith('/audio-files/') && customAudioDir) {
-    const rel = pathname.slice('/audio-files/'.length);
-    const filePath = path.join(customAudioDir, rel);
+  if (parsed.showVersion) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
+      console.log(`v${pkg.version}`);
+    } catch {
+      console.log('v1.5.0');
+    }
+    return;
+  }
+
+  if (parsed.showHelp) {
+    console.log(`
+\x1b[1;33m╔═══════════════════════════════════════════════════════════════════════╗\x1b[0m
+\x1b[1;33m║   🔊  HOREG AUDIO CLI  -  Terminal Sound System Glerr                 ║\x1b[0m
+\x1b[1;33m╚═══════════════════════════════════════════════════════════════════════╝\x1b[0m
+
+\x1b[1mUsage:\x1b[0m
+  npx horeg-audio [options] [audio-directory]
+
+\x1b[1mArguments:\x1b[0m
+  [audio-directory]    Path to local folder containing audio files
+
+\x1b[1mOptions:\x1b[0m
+  --tui               Run in interactive Terminal UI (TUI) mode (default)
+  -w, --web           Run web player server and open browser
+  -p, --port <port>   Port for local streaming server (default: 3000)
+  --no-open           Do not automatically open browser in web mode
+  -v, --version       Show package version
+  -h, --help          Show this help message
+
+\x1b[1mInteractive TUI Controls:\x1b[0m
+  [Space]             Toggle Play / Pause
+  [←] / [→]           Seek backward / forward 5 seconds
+  [↑] / [↓]           Adjust volume up / down
+  [B] / [b]           Cycle Bass Boost level (-10 dB to +15 dB)
+  [N] / [P]           Next / Previous track
+  [L] / [l]           Toggle Loop mode (ALL / ONE / NONE)
+  [S] / [s]           Toggle Shuffle mode
+  [W] / [w]           Open Web UI in default browser
+  [Q] / [q]           Quit CLI
+`);
+    return;
+  }
+
+  let { port, customAudioDir, mode, noOpen } = parsed;
+
+  // Build playlist from directory or default demo
+  let customPlaylist = [];
+  if (customAudioDir) {
+    try {
+      if (fs.existsSync(customAudioDir) && fs.statSync(customAudioDir).isDirectory()) {
+        const audioFiles = findAudioFiles(customAudioDir);
+        customPlaylist = audioFiles.map((fullPath, idx) => {
+          const relPath = path.relative(customAudioDir, fullPath).replace(/\\/g, '/');
+          const ext = path.extname(fullPath);
+          const title = path.basename(fullPath, ext);
+          const parentDir = path.basename(path.dirname(fullPath));
+          const rootDir = path.basename(customAudioDir);
+          const artist = parentDir && parentDir !== rootDir ? parentDir : (rootDir || 'Local Audio');
+          const duration = getAudioDuration(fullPath);
+          const coverArt = generateCoverThumbnail(fullPath, title, idx, customAudioDir);
+
+          return {
+            id: idx + 1,
+            title,
+            artist,
+            album: rootDir || 'Horeg Audio Files',
+            duration,
+            coverArt,
+            src: `/audio-files/${encodeURI(relPath)}`
+          };
+        });
+      } else {
+        console.warn(`[HoregAudio] Warning: Folder "${customAudioDir}" not found or not a directory.`);
+        customAudioDir = null;
+      }
+    } catch (e) {
+      console.warn(`[HoregAudio] Warning scanning audio directory:`, e.message);
+      customAudioDir = null;
+    }
+  }
+
+  if (customPlaylist.length === 0) {
+    customPlaylist = [
+      {
+        id: 1,
+        title: 'Karnaval Sound Horeg Glerr (Demo)',
+        artist: 'DJ Horeg Sound System',
+        album: 'Festival Audio Jawa 2026',
+        duration: 214,
+        src: 'https://cdn.jsdelivr.net/gh/ryomario/horeg-audio@main/demo/sample-bass.mp3'
+      },
+      {
+        id: 2,
+        title: 'Subwoofer Rumble Test 30Hz - 80Hz',
+        artist: 'Audio Laboratory',
+        album: 'Extreme Excursion Series',
+        duration: 180,
+        src: 'https://cdn.jsdelivr.net/gh/ryomario/horeg-audio@main/demo/sample-sub.mp3'
+      }
+    ];
+  }
+
+  // Web server directory
+  let serveDir = path.join(packageRoot, 'dist-demo');
+  if (!fs.existsSync(serveDir)) serveDir = path.join(packageRoot, 'demo');
+  if (!fs.existsSync(serveDir)) serveDir = packageRoot;
+
+  // Start HTTP streaming server
+  const server = http.createServer((req, res) => {
+    const parsedUrl = new URL(req.url, `http://localhost:${port}`);
+    let pathname = decodeURIComponent(parsedUrl.pathname);
+
+    if (pathname.startsWith('/audio-files/') && customAudioDir) {
+      const rel = pathname.slice('/audio-files/'.length);
+      const filePath = path.join(customAudioDir, rel);
+      const resolvedPath = path.resolve(filePath);
+      const resolvedAudioDir = path.resolve(customAudioDir);
+
+      if (!resolvedPath.startsWith(resolvedAudioDir)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('403 Forbidden');
+        return;
+      }
+
+      fs.stat(filePath, (err) => {
+        if (err) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('404 Not Found');
+          return;
+        }
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = MIME_TYPES[ext] || 'audio/mpeg';
+        streamFileWithRanges(filePath, req, res, contentType);
+      });
+      return;
+    }
+
+    if (pathname === '/api/playlist' || pathname === '/api/playlist.json') {
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(JSON.stringify(customPlaylist, null, 2));
+      return;
+    }
+
+    let relativePath = pathname;
+    if (relativePath === '/horeg-audio') relativePath = '/';
+    else if (relativePath.startsWith('/horeg-audio/')) relativePath = relativePath.slice('/horeg-audio'.length);
+
+    let filePath = path.join(serveDir, relativePath);
     const resolvedPath = path.resolve(filePath);
-    const resolvedAudioDir = path.resolve(customAudioDir);
-
-    if (!resolvedPath.startsWith(resolvedAudioDir)) {
+    const resolvedRoot = path.resolve(serveDir);
+    if (!resolvedPath.startsWith(resolvedRoot)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('403 Forbidden');
       return;
     }
 
-    fs.stat(filePath, (err) => {
-      if (err) {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('404 Not Found');
-        return;
-      }
-      const ext = path.extname(filePath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || 'audio/mpeg';
-      streamFileWithRanges(filePath, req, res, contentType);
-    });
-    return;
-  }
-
-  // Endpoint 2: Playlist API (/api/playlist or /api/playlist.json)
-  if (pathname === '/api/playlist' || pathname === '/api/playlist.json') {
-    res.writeHead(200, {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*'
-    });
-    res.end(JSON.stringify(customPlaylist, null, 2));
-    return;
-  }
-
-  // Strip GitHub Pages base path prefix (/horeg-audio or /horeg-audio/...)
-  let relativePath = pathname;
-  if (relativePath === '/horeg-audio') {
-    relativePath = '/';
-  } else if (relativePath.startsWith('/horeg-audio/')) {
-    relativePath = relativePath.slice('/horeg-audio'.length);
-  }
-
-  let filePath = path.join(serveDir, relativePath);
-
-  // Security: prevent path traversal out of serveDir
-  const resolvedPath = path.resolve(filePath);
-  const resolvedRoot = path.resolve(serveDir);
-  if (!resolvedPath.startsWith(resolvedRoot)) {
-    res.writeHead(403, { 'Content-Type': 'text/plain' });
-    res.end('403 Forbidden');
-    return;
-  }
-
-  // Helper to serve index.html with injected custom playlist
-  const serveIndexHtml = (indexPath) => {
-    fs.readFile(indexPath, 'utf8', (err, htmlContent) => {
-      if (err) {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('404 Not Found');
-        return;
-      }
-      let finalHtml = htmlContent;
-      if (customPlaylist.length > 0) {
-        const scriptTag = `<script>window.__HOREG_CUSTOM_PLAYLIST__ = ${JSON.stringify(customPlaylist)};</script>`;
-        if (finalHtml.includes('<head>')) {
-          finalHtml = finalHtml.replace('<head>', `<head>\n  ${scriptTag}`);
-        } else {
-          finalHtml = scriptTag + finalHtml;
+    const serveIndexHtml = (indexPath) => {
+      fs.readFile(indexPath, 'utf8', (err, htmlContent) => {
+        if (err) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('404 Not Found');
+          return;
         }
+        let finalHtml = htmlContent;
+        if (customPlaylist.length > 0) {
+          const scriptTag = `<script>window.__HOREG_CUSTOM_PLAYLIST__ = ${JSON.stringify(customPlaylist)};</script>`;
+          if (finalHtml.includes('<head>')) {
+            finalHtml = finalHtml.replace('<head>', `<head>\n  ${scriptTag}`);
+          } else {
+            finalHtml = scriptTag + finalHtml;
+          }
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-cache'
+        });
+        res.end(finalHtml);
+      });
+    };
+
+    fs.stat(filePath, (err, stats) => {
+      if (err) {
+        const indexPath = path.join(serveDir, 'index.html');
+        if (fs.existsSync(indexPath) && !path.extname(relativePath)) {
+          serveIndexHtml(indexPath);
+          return;
+        }
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('404 Not Found');
+        return;
       }
+
+      if (stats.isDirectory()) {
+        filePath = path.join(filePath, 'index.html');
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.html') {
+        serveIndexHtml(filePath);
+        return;
+      }
+
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+      if (ext === '.mp3' || ext === '.wav' || ext === '.ogg' || ext === '.flac') {
+        streamFileWithRanges(filePath, req, res, contentType);
+        return;
+      }
+
       res.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Type': contentType,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-cache'
       });
-      res.end(finalHtml);
+      fs.createReadStream(filePath).pipe(res);
     });
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      port++;
+      server.listen(port);
+    } else {
+      console.error('Server error:', err);
+      process.exit(1);
+    }
+  });
+
+  server.listen(port, () => {
+    const webUrl = `http://localhost:${port}`;
+
+    const openBrowser = () => {
+      const startCmd = process.platform === 'win32' ? `start ${webUrl}` :
+                       process.platform === 'darwin' ? `open ${webUrl}` :
+                       `xdg-open ${webUrl}`;
+      exec(startCmd, () => {});
+    };
+
+    // MODE 1: Web mode
+    if (mode === 'web') {
+      const playlistInfo = customAudioDir
+        ? `📁 Loaded ${customPlaylist.length} track(s) from: ${path.basename(customAudioDir)}`
+        : `🎵 Demo Synth Audio Tracks (${customPlaylist.length} tracks)`;
+
+      console.log(`
+\x1b[1;33m╔═══════════════════════════════════════════════════════════╗\x1b[0m
+\x1b[1;33m║                                                           ║\x1b[0m
+\x1b[1;33m║   🔊  HOREG AUDIO PLAYER - Web Mode Active                ║\x1b[0m
+\x1b[1;33m║                                                           ║\x1b[0m
+\x1b[1;33m║   Web Player running at:                                  ║\x1b[0m
+\x1b[1;33m║   ➜  \x1b[1;36m${webUrl.padEnd(53, ' ')}\x1b[0m\x1b[1;33m║\x1b[0m
+\x1b[1;33m║                                                           ║\x1b[0m
+\x1b[1;33m║   Playlist:                                               ║\x1b[0m
+\x1b[1;33m║   ➜  ${playlistInfo.slice(0, 53).padEnd(53, ' ')}║\x1b[0m
+\x1b[1;33m║                                                           ║\x1b[0m
+\x1b[1;33m║   Press Ctrl+C to stop server                             ║\x1b[0m
+\x1b[1;33m╚═══════════════════════════════════════════════════════════╝\x1b[0m
+`);
+      if (!noOpen) {
+        openBrowser();
+      }
+      return;
+    }
+
+    // MODE 2: Terminal UI (TUI) Mode
+    startTuiMode({
+      playlist: customPlaylist,
+      webUrl,
+      openBrowser,
+      onClose: () => {
+        server.close();
+        process.exit(0);
+      }
+    });
+  });
+}
+
+function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
+  const state = {
+    isPlaying: true,
+    currentIndex: 0,
+    currentTime: 0,
+    volume: 0.8,
+    bassBoost: 6,
+    loopMode: 'all',
+    isShuffle: false
   };
 
-  fs.stat(filePath, (err, stats) => {
-    if (err) {
-      // Fallback for SPA routing if index.html exists
-      const indexPath = path.join(serveDir, 'index.html');
-      if (fs.existsSync(indexPath) && !path.extname(relativePath)) {
-        serveIndexHtml(indexPath);
+  const bassLevels = [-6, 0, 4, 8, 12, 15];
+
+  // Hide cursor in TTY
+  if (process.stdout.isTTY) {
+    process.stdout.write('\x1B[?25l');
+  }
+
+  const cleanup = () => {
+    if (process.stdout.isTTY) {
+      process.stdout.write('\x1B[?25h');
+    }
+    clearInterval(timer);
+    onClose();
+  };
+
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+  process.on('exit', () => {
+    if (process.stdout.isTTY) {
+      process.stdout.write('\x1B[?25h');
+    }
+  });
+
+  const render = () => {
+    const curTrack = playlist[state.currentIndex] || { title: 'Unknown', artist: 'Unknown', duration: 180 };
+    const dur = curTrack.duration || 180;
+    const progressStr = renderProgressBar(state.currentTime, dur, 30);
+    const vis = renderAsciiVisualizer(state.bassBoost, state.currentTime, state.isPlaying);
+
+    const playStatus = state.isPlaying
+      ? `\x1b[1;32m▶ PLAYING\x1b[0m`
+      : `\x1b[1;33m⏸ PAUSED \x1b[0m`;
+
+    const strobeStatus = vis.isStrobe
+      ? `\x1b[1;37;41m[ ⚡ STROBE FLASH ACTIVE ⚡ ]\x1b[0m`
+      : `\x1b[2;37m[ ⚡ STROBE RIG STANDBY  ⚡ ]\x1b[0m`;
+
+    const punchText = vis.excursionPercent > 65 ? `\x1b[1;31m⚡ GLERR!\x1b[0m` : `\x1b[1;33mKINETIC\x1b[0m`;
+
+    const out = `\x1B[2J\x1B[0;0H
+\x1b[1;33m╔═══════════════════════════════════════════════════════════════════════════════╗\x1b[0m
+\x1b[1;33m║   🔊  HOREG AUDIO TERMINAL SOUND SYSTEM  -  SOUND GLERR CONCERT               ║\x1b[0m
+\x1b[1;33m╚═══════════════════════════════════════════════════════════════════════════════╝\x1b[0m
+
+ \x1b[1;36m▶ NOW PLAYING:\x1b[0m
+   \x1b[1mTitle  :\x1b[0m ${curTrack.title}
+   \x1b[1mArtist :\x1b[0m ${curTrack.artist || 'Sound Horeg'}
+   \x1b[1mTrack  :\x1b[0m [${state.currentIndex + 1}/${playlist.length}]
+   \x1b[1mAlbum  :\x1b[0m ${curTrack.album || 'Horeg Rig Series'}
+
+ \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
+ ${playStatus}  [${progressStr}]  ${formatTime(state.currentTime)} / ${formatTime(dur)} (${Math.round((state.currentTime / dur) * 100)}%)
+ \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
+
+ \x1b[1;33m📊 REAL-TIME SPECTRUM WAVE:\x1b[0m
+ \x1b[1;33m${vis.waveLine}\x1b[0m
+
+ \x1b[1;33m🎚️ 5-BAND PARAMETRIC SPECTRUM:\x1b[0m
+\x1b[36m${vis.meterText}\x1b[0m
+
+ \x1b[1;35m🔊 SUBWOOFER CONE EXCURSION:\x1b[0m
+   [${renderProgressBar(vis.excursionPercent, 100, 24)}] \x1b[1m${vis.excursionPercent}%\x1b[0m  PUNCH: ${punchText}
+
+ \x1b[1;37m⚡ LIGHTING RIG:\x1b[0m
+   ${strobeStatus}
+
+ \x1b[1m🎛️ CONTROLS STATUS:\x1b[0m
+   \x1b[1mVolume:\x1b[0m ${Math.round(state.volume * 100)}%   |   \x1b[1mBass Boost:\x1b[0m \x1b[1;33m${state.bassBoost >= 0 ? '+' : ''}${state.bassBoost} dB\x1b[0m   |   \x1b[1mLoop:\x1b[0m ${state.loopMode.toUpperCase()}   |   \x1b[1mShuffle:\x1b[0m ${state.isShuffle ? 'ON' : 'OFF'}
+   \x1b[2mWeb Player: ${webUrl} (Press [W] to open in browser)\x1b[0m
+
+ \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
+ \x1b[1;37m[Space]\x1b[0m Play/Pause  \x1b[1;37m[←/→]\x1b[0m Seek ±5s  \x1b[1;37m[↑/↓]\x1b[0m Vol ±5%  \x1b[1;37m[B]\x1b[0m Bass Boost  \x1b[1;37m[N/P]\x1b[0m Track
+ \x1b[1;37m[L]\x1b[0m Loop Mode    \x1b[1;37m[S]\x1b[0m Shuffle   \x1b[1;37m[W]\x1b[0m Open Web  \x1b[1;37m[Q]\x1b[0m Exit
+ \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
+`;
+    process.stdout.write(out);
+  };
+
+  const timer = setInterval(() => {
+    if (state.isPlaying) {
+      state.currentTime += 0.1;
+      const curTrack = playlist[state.currentIndex];
+      const dur = curTrack?.duration || 180;
+      if (state.currentTime >= dur) {
+        if (state.loopMode === 'one') {
+          state.currentTime = 0;
+        } else {
+          // Next track
+          if (state.currentIndex + 1 < playlist.length) {
+            state.currentIndex++;
+            state.currentTime = 0;
+          } else if (state.loopMode === 'all') {
+            state.currentIndex = 0;
+            state.currentTime = 0;
+          } else {
+            state.isPlaying = false;
+            state.currentTime = dur;
+          }
+        }
+      }
+    }
+    render();
+  }, 100);
+
+  // Keyboard input in raw mode
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+
+    process.stdin.on('data', (key) => {
+      // Ctrl+C or Q
+      if (key === '\u0003' || key.toLowerCase() === 'q') {
+        cleanup();
         return;
       }
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('404 Not Found');
-      return;
-    }
 
-    if (stats.isDirectory()) {
-      filePath = path.join(filePath, 'index.html');
-    }
+      // Space: play/pause
+      if (key === ' ') {
+        state.isPlaying = !state.isPlaying;
+        render();
+        return;
+      }
 
-    const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.html') {
-      serveIndexHtml(filePath);
-      return;
-    }
+      // Left arrow: seek -5s
+      if (key === '\u001b[D') {
+        state.currentTime = Math.max(0, state.currentTime - 5);
+        render();
+        return;
+      }
 
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-    if (ext === '.mp3' || ext === '.wav' || ext === '.ogg' || ext === '.flac') {
-      streamFileWithRanges(filePath, req, res, contentType);
-      return;
-    }
+      // Right arrow: seek +5s
+      if (key === '\u001b[C') {
+        const curTrack = playlist[state.currentIndex];
+        const dur = curTrack?.duration || 180;
+        state.currentTime = Math.min(dur, state.currentTime + 5);
+        render();
+        return;
+      }
 
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Access-Control-Allow-Origin': '*',
-      'Cache-Control': 'no-cache'
+      // Up arrow: vol +0.05
+      if (key === '\u001b[A') {
+        state.volume = Math.min(1, Math.round((state.volume + 0.05) * 100) / 100);
+        render();
+        return;
+      }
+
+      // Down arrow: vol -0.05
+      if (key === '\u001b[B') {
+        state.volume = Math.max(0, Math.round((state.volume - 0.05) * 100) / 100);
+        render();
+        return;
+      }
+
+      // B: cycle bass boost
+      if (key.toLowerCase() === 'b') {
+        const currentIdx = bassLevels.indexOf(state.bassBoost);
+        const nextIdx = (currentIdx + 1) % bassLevels.length;
+        state.bassBoost = bassLevels[nextIdx];
+        render();
+        return;
+      }
+
+      // N: next track
+      if (key.toLowerCase() === 'n') {
+        if (state.isShuffle && playlist.length > 1) {
+          state.currentIndex = Math.floor(Math.random() * playlist.length);
+        } else {
+          state.currentIndex = (state.currentIndex + 1) % playlist.length;
+        }
+        state.currentTime = 0;
+        render();
+        return;
+      }
+
+      // P: prev track
+      if (key.toLowerCase() === 'p') {
+        state.currentIndex = (state.currentIndex - 1 + playlist.length) % playlist.length;
+        state.currentTime = 0;
+        render();
+        return;
+      }
+
+      // L: toggle loop mode
+      if (key.toLowerCase() === 'l') {
+        const modes = ['all', 'one', 'none'];
+        const nextModeIdx = (modes.indexOf(state.loopMode) + 1) % modes.length;
+        state.loopMode = modes[nextModeIdx];
+        render();
+        return;
+      }
+
+      // S: toggle shuffle
+      if (key.toLowerCase() === 's') {
+        state.isShuffle = !state.isShuffle;
+        render();
+        return;
+      }
+
+      // W: open browser
+      if (key.toLowerCase() === 'w') {
+        openBrowser();
+        render();
+        return;
+      }
     });
-    fs.createReadStream(filePath).pipe(res);
-  });
-});
-
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.log(`Port ${port} in use, trying ${port + 1}...`);
-    port++;
-    server.listen(port);
   } else {
-    console.error('Server error:', err);
-    process.exit(1);
+    // Non-TTY environment
+    render();
   }
-});
+}
 
-server.listen(port, () => {
-  const url = `http://localhost:${port}`;
-  const playlistInfo = customAudioDir
-    ? `📁 Loaded ${customPlaylist.length} track(s) from: ${path.basename(customAudioDir)}`
-    : `🎵 Demo Synth Audio Tracks`;
-
-  console.log(`
-╔═══════════════════════════════════════════════════════════╗
-║                                                           ║
-║   🔊  HOREG AUDIO PLAYER - Sound System Glerr             ║
-║                                                           ║
-║   Web Player running at:                                  ║
-║   ➜  ${url.padEnd(53, ' ')}║
-║                                                           ║
-║   Playlist:                                               ║
-║   ➜  ${playlistInfo.slice(0, 53).padEnd(53, ' ')}║
-║                                                           ║
-║   Press Ctrl+C to stop                                    ║
-╚═══════════════════════════════════════════════════════════╝
-`);
-
-  // Auto-open browser
-  const startCmd = process.platform === 'win32' ? `start ${url}` :
-                   process.platform === 'darwin' ? `open ${url}` :
-                   `xdg-open ${url}`;
-  exec(startCmd, () => {});
-});
+// Auto-run if executed directly as entrypoint
+const currentFilePath = fileURLToPath(import.meta.url);
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
+if (invokedPath && (invokedPath === currentFilePath || invokedPath.endsWith('cli.js') || invokedPath.endsWith('horeg-audio'))) {
+  startCli();
+}
