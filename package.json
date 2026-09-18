@@ -1,6 +1,6 @@
 {
   "name": "horeg-audio",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Standalone Vanilla TypeScript audio player library with encapsulated Shadow DOM and sound horeg aesthetics.",
   "author": "Mario <ardamomo3@gmail.com>",
   "license": "MIT",
@@ -36,6 +36,7 @@
   },
   "files": [
     "dist",
+    "dist-demo",
     "bin"
   ],
   "keywords": [
@@ -50,6 +51,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:demo": "cross-env BUILD_TARGET=demo vite build",
+    "prepack": "tsc && vite build && cross-env BUILD_TARGET=demo vite build",
     "preview": "vite preview --outDir dist-demo --base /horeg-audio/",
     "test": "vitest run"
   },

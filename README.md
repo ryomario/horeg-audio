@@ -17,12 +17,13 @@
 - **Sound Horeg Aesthetics**: Desain box speaker subwoofer panggung, grill tekstur radial, baut sudut industrial, dan tombol play dengan animasi neon glow pulse.
 - **Real-time Scrubbing & Cursor Grab**: Geser timeline lagu secara instan dan *real-time* tanpa jeda animasi (`transition: none !important`), dengan respon kursor `cursor: grab` saat diarahkan dan `cursor: grabbing` saat menggeser track.
 - **6 Presets Tema (Dark & Light Mode)**: Pilihan tema gelap dan terang siap pakai yang otomatis menyesuaikan seluruh palet komponen internal (cabinet, surface, drawer, fader, dan soft elevation shadows).
-- **Dynamic EQ / VU Visualizer**: Bar equalizer mini dinamis multi-band yang responsif bergerak saat audio diputar.
-- **Multi-Track Playlist & Rack Drawer**: Panel drawer geser bertema *rack mount audio* dengan antrean trek, nomor urut, durasi, dan tombol hapus lagu.
-- **Dukungan File Lokal & Audio URL**: Tambahkan trek audio komputer (.mp3, .wav, .flac, .ogg, .m4a) secara instan via file dialog maupun drag-and-drop langsung ke player, serta form tambah audio streaming URL online.
-- **Zero Third-Party Dependencies**: Berbasis TypeScript / JavaScript murni tanpa ketergantungan library luar (*micro bundle* ~14 KB gzip).
+- **Dual Visualizer Engine (Canvas 2D & 3D DOM)**: Pilihan visualisasi HTML5 2D Canvas berkinerja tinggi 60 FPS (animasi fisik subwoofer cone excursion, surround stretch, & shockwave rings) atau 3D DOM bar.
+- **Graphic Equalizer & Sound Presets**: Lowshelf bass booster hingga +15 dB dengan limiter brickwall anti-clipping, serta preset audio (`Horeg Sub-Punch`, `Bass Extreme`, `Vocal Carnival`, `Flat`).
+- **Media Session API & State Persistence**: Metadata lagu, artwork, dan tombol kontrol terintegrasi ke lockscreen/media keys native OS, serta setelan tersimpan di `localStorage`.
+- **Framework Adapters (React & Vue)**: Helper komponen `createReactPlayer` dan `createVuePlayer` bawaan untuk integrasi kilat tanpa overhead.
+- **Zero Third-Party Dependencies**: Berbasis TypeScript murni tanpa dependensi eksternal.
 - **Full Keyboard & ARIA a11y**: Navigasi ramah aksesibilitas keyboard (`Space`, panah kiri/kanan untuk seek, panah atas/bawah untuk volume).
-- **Universal Distribution**: Siap pakai via NPM (ESM, CJS, TypeScript `.d.ts`), CDN browser tag `<script src="...">`, maupun native browser `<script type="module">`.
+- **Universal Distribution**: Siap pakai via NPM (ESM, CJS, TypeScript `.d.ts`), CDN browser tag `<script src="...">`, maupun CLI instant runner `npx horeg-audio`.
 
 ---
 
@@ -44,7 +45,31 @@ yarn add horeg-audio
 
 ---
 
-## 🚀 Cara Penggunaan
+## ⚡ Instant CLI Runner (`npx horeg-audio`)
+
+Ingin mencoba pemutar musik Sound Horeg di komputer Anda sendiri tanpa instalasi atau setup proyek? Cukup jalankan satu perintah:
+
+```bash
+# 1. Menjalankan Demo Player bawaan secara instan:
+npx horeg-audio
+
+# 2. Memutar seluruh koleksi musik dari folder lokal Anda:
+npx horeg-audio ./my-audio-folder
+
+# 3. Menentukan port khusus:
+npx horeg-audio "D:\Koleksi Musik" --port 8080
+```
+
+### Keunggulan Mode CLI:
+- **Zero Config**: Langsung membuka browser lokal dengan antarmuka Sound Horeg lengkap.
+- **Auto-Scan Audio Folder**: Mendeteksi seluruh file audio di folder (`.mp3`, `.wav`, `.flac`, `.ogg`, `.m4a`, `.aac`, `.opus`, dll.) secara otomatis.
+- **Automatic Metadata & CoverArt Extraction**: Mengekstrak cover art langsung dari metadata file musik (`ID3v2 APIC` pada MP3 atau `METADATA_BLOCK_PICTURE` pada FLAC), file gambar cover di folder (`cover.jpg`, `album.png`), atau men-generate *128px sound horeg vinyl badge* secara dinamis.
+- **Calculated Duration**: Menghitung durasi lagu otomatis dari header audio.
+- **Smooth Audio Streaming**: Mendukung *HTTP 206 Partial Content / Range Requests* untuk scrubbing / seeking lagu tanpa jeda.
+
+---
+
+## 🚀 Cara Penggunaan Library
 
 ### 1. Modern Frameworks & Bundlers (ESM / TypeScript / Vite / Next.js)
 
