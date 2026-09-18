@@ -1,4 +1,4 @@
-import { HoregPlayerOptions, HoregTheme, Track, LoopMode, PersistenceOptions, VisualizerMode, EqPreset } from './types';
+import { HoregPlayerOptions, HoregTheme, Track, LoopMode, PersistenceOptions, VisualizerMode, EqPreset, EqBand } from './types';
 import { generateStyles, THEME_PRESETS } from './styles';
 import { AudioEngine, AudioEnergy } from './AudioEngine';
 import { UI } from './UI';
@@ -24,12 +24,14 @@ export class HoregAudio {
   private boundKeyHandler: (e: KeyboardEvent) => void;
   private onBassChangeCallback?: (bassLevel: number) => void;
   private onEqChangeCallback?: (preset: EqPreset) => void;
+  private onBandGainChangeCallback?: (band: EqBand, gainDb: number) => void;
   private persistOpts: ResolvedPersistence | null = null;
   private isMediaSessionEnabled: boolean = true;
 
   constructor(options: HoregPlayerOptions) {
     this.onBassChangeCallback = options.onBassChange;
     this.onEqChangeCallback = options.onEqChange;
+    this.onBandGainChangeCallback = options.onBandGainChange;
     this.isMediaSessionEnabled = options.mediaSession !== false;
 
     if (typeof options.container === 'string') {
@@ -210,6 +212,14 @@ export class HoregAudio {
         this.visualizer.stop();
         this.updateMediaSessionPlaybackState('none');
         if (options.onError) options.onError(err);
+      },
+      onEqChange: (preset) => {
+        if (this.onEqChangeCallback) this.onEqChangeCallback(preset);
+        if (options.onEqChange) options.onEqChange(preset);
+      },
+      onBandGainChange: (band, gainDb) => {
+        if (this.onBandGainChangeCallback) this.onBandGainChangeCallback(band, gainDb);
+        if (options.onBandGainChange) options.onBandGainChange(band, gainDb);
       }
     });
 
@@ -534,15 +544,40 @@ export class HoregAudio {
     } catch (_) {}
   }
 
+  public setEqualizerPreset(preset: EqPreset): void {
+    this.audioEngine.setEqualizerPreset(preset);
+  }
+
+  public getEqualizerPreset(): EqPreset {
+    return this.audioEngine.getEqualizerPreset();
+  }
+
   public setEqPreset(preset: EqPreset): void {
-    this.audioEngine.setEqPreset(preset);
-    if (this.onEqChangeCallback) {
-      this.onEqChangeCallback(preset);
-    }
+    this.setEqualizerPreset(preset);
   }
 
   public getEqPreset(): EqPreset {
-    return this.audioEngine.getEqPreset();
+    return this.getEqualizerPreset();
+  }
+
+  public setBandGain(band: EqBand, db: number): void {
+    this.audioEngine.setBandGain(band, db);
+  }
+
+  public getBandGain(band: EqBand): number {
+    return this.audioEngine.getBandGain(band);
+  }
+
+  public getBandGains(): Record<EqBand, number> {
+    return this.audioEngine.getBandGains();
+  }
+
+  public getEqualizerFilters(): Record<EqBand, BiquadFilterNode | null> {
+    return this.audioEngine.getEqualizerFilters();
+  }
+
+  public getLimiter(): DynamicsCompressorNode | null {
+    return this.audioEngine.getLimiter();
   }
 
   public setVisualizerMode(mode: VisualizerMode): void {
