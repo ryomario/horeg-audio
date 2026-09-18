@@ -34,8 +34,8 @@ export class MockCanvasRenderingContext2D {
 export class MockDOMElement {
   tagName: string;
   className: string = '';
-  classList: { contains: (cls: string) => boolean };
-  style: Record<string, string> = {};
+  classList: any;
+  style: any;
   children: MockDOMElement[] = [];
   innerHTML: string = '';
   width: number = 800;
@@ -43,12 +43,46 @@ export class MockDOMElement {
 
   constructor(tagName: string) {
     this.tagName = tagName.toUpperCase();
+    const self = this;
     this.classList = {
-      contains: (cls: string) => this.className.includes(cls)
+      contains: (cls: string) => self.className.split(/\s+/).includes(cls),
+      add: (...clss: string[]) => {
+        const set = new Set(self.className.split(/\s+/).filter(Boolean));
+        clss.forEach((c) => set.add(c));
+        self.className = Array.from(set).join(' ');
+      },
+      remove: (...clss: string[]) => {
+        const set = new Set(self.className.split(/\s+/).filter(Boolean));
+        clss.forEach((c) => set.delete(c));
+        self.className = Array.from(set).join(' ');
+      },
+      toggle: (cls: string, force?: boolean) => {
+        const set = new Set(self.className.split(/\s+/).filter(Boolean));
+        const has = set.has(cls);
+        const shouldAdd = force !== undefined ? force : !has;
+        if (shouldAdd) set.add(cls);
+        else set.delete(cls);
+        self.className = Array.from(set).join(' ');
+        return shouldAdd;
+      }
+    };
+    this.style = {
+      removeProperty: (prop: string) => {
+        delete self.style[prop];
+      },
+      setProperty: (prop: string, val: string) => {
+        self.style[prop] = val;
+      },
+      getPropertyValue: (prop: string) => {
+        return self.style[prop] || '';
+      }
     };
   }
 
+  parentNode: any = null;
+
   appendChild(child: any) {
+    child.parentNode = this;
     this.children.push(child);
     return child;
   }
@@ -56,7 +90,14 @@ export class MockDOMElement {
   removeChild(child: any) {
     const idx = this.children.indexOf(child);
     if (idx !== -1) this.children.splice(idx, 1);
+    child.parentNode = null;
     return child;
+  }
+
+  remove() {
+    if (this.parentNode) {
+      this.parentNode.removeChild(this);
+    }
   }
 
   contains(child: any) {
@@ -83,19 +124,107 @@ export class MockDOMElement {
     }
     return null;
   }
+
+  attachShadow(_init?: { mode: string }) {
+    const shadow = new MockDOMElement('shadow-root');
+    (this as any).shadowRoot = shadow;
+    return shadow;
+  }
 }
 
 export function setupDomMocks() {
+  if (typeof globalThis.HTMLElement === 'undefined') {
+    (globalThis as any).HTMLElement = class HTMLElementMock extends MockDOMElement {
+      attributes: Record<string, string> = {};
+      eventListeners: Record<string, Function[]> = {};
+
+      constructor() {
+        super('div');
+      }
+
+      getAttribute(name: string) {
+        return this.attributes[name] ?? null;
+      }
+
+      setAttribute(name: string, val: string) {
+        const old = this.attributes[name] ?? null;
+        this.attributes[name] = String(val);
+        if ((this as any).attributeChangedCallback) {
+          (this as any).attributeChangedCallback(name, old, String(val));
+        }
+      }
+
+      hasAttribute(name: string) {
+        return name in this.attributes;
+      }
+
+      removeAttribute(name: string) {
+        const old = this.attributes[name] ?? null;
+        delete this.attributes[name];
+        if ((this as any).attributeChangedCallback) {
+          (this as any).attributeChangedCallback(name, old, null);
+        }
+      }
+
+      addEventListener(event: string, fn: Function) {
+        this.eventListeners[event] = this.eventListeners[event] || [];
+        this.eventListeners[event].push(fn);
+      }
+
+      removeEventListener(event: string, fn: Function) {
+        if (!this.eventListeners[event]) return;
+        this.eventListeners[event] = this.eventListeners[event].filter(f => f !== fn);
+      }
+
+      dispatchEvent(evt: any) {
+        const list = this.eventListeners[evt.type] || [];
+        list.forEach(f => f(evt));
+        return true;
+      }
+    };
+  }
+
+  if (typeof globalThis.customElements === 'undefined') {
+    const registry = new Map<string, any>();
+    (globalThis as any).customElements = {
+      define(name: string, ctor: any) {
+        registry.set(name, ctor);
+      },
+      get(name: string) {
+        return registry.get(name);
+      }
+    };
+  }
+
+  if (typeof globalThis.CustomEvent === 'undefined') {
+    (globalThis as any).CustomEvent = class CustomEventMock {
+      type: string;
+      detail: any;
+      constructor(type: string, init?: any) {
+        this.type = type;
+        this.detail = init?.detail;
+      }
+    };
+  }
+
   if (typeof globalThis.document === 'undefined') {
     (globalThis as any).document = {
       createElement(tag: string) {
-        return new MockDOMElement(tag);
+        const CustomCtor = (globalThis as any).customElements?.get(tag);
+        if (CustomCtor) {
+          return new CustomCtor();
+        }
+        return new (globalThis as any).HTMLElement(tag);
+      },
+      querySelector() {
+        return new (globalThis as any).HTMLElement('div');
       }
     };
   }
   if (typeof globalThis.window === 'undefined') {
     (globalThis as any).window = {
-      devicePixelRatio: 2
+      devicePixelRatio: 2,
+      customElements: (globalThis as any).customElements
     };
   }
   if (typeof globalThis.requestAnimationFrame === 'undefined') {
@@ -107,3 +236,6 @@ export function setupDomMocks() {
     };
   }
 }
+
+setupDomMocks();
+

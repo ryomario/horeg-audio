@@ -1,0 +1,32 @@
+{
+  "name": "@horeg-audio/vue",
+  "version": "1.4.0",
+  "description": "Official Vue 3 wrapper & Composition API composables for sound horeg audio player and Web Audio API engine.",
+  "author": "Mario <ardamomo3@gmail.com>",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  },
+  "dependencies": {
+    "@horeg-audio/core": "workspace:*",
+    "@horeg-audio/ui": "workspace:*"
+  },
+  "keywords": [
+    "horeg-audio",
+    "vue",
+    "vue3",
+    "composition-api",
+    "vue-audio-player",
+    "sound-horeg"
+  ]
+}

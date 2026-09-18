@@ -319,6 +319,26 @@ export class HoregAudio {
     this.savePersistedState();
   }
 
+  public getVolume(): number {
+    return this.audioEngine.getVolume();
+  }
+
+  public getCurrentTime(): number {
+    return this.audioEngine.getCurrentTime();
+  }
+
+  public getDuration(): number {
+    return this.audioEngine.getDuration();
+  }
+
+  public isPlaying(): boolean {
+    return this.audioEngine.isPlaying();
+  }
+
+  public togglePlay(): void {
+    this.toggle();
+  }
+
   public setBass(gainDb: number): void {
     const clamped = Math.max(-10, Math.min(15, gainDb));
     this.audioEngine.setBassGain(clamped);

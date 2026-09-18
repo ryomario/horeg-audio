@@ -1,6 +1,6 @@
 {
   "name": "horeg-audio",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Standalone Vanilla TypeScript audio player library with encapsulated Shadow DOM and sound horeg aesthetics.",
   "author": "Mario <ardamomo3@gmail.com>",
   "license": "MIT",
@@ -29,6 +29,22 @@
       "require": "./dist/horeg-audio.cjs",
       "default": "./dist/horeg-audio.js"
     },
+    "./core": {
+      "types": "./packages/core/src/index.ts",
+      "default": "./dist/horeg-audio.js"
+    },
+    "./ui": {
+      "types": "./packages/ui/src/index.ts",
+      "default": "./dist/horeg-audio.js"
+    },
+    "./react": {
+      "types": "./packages/react/src/index.ts",
+      "default": "./packages/react/src/index.ts"
+    },
+    "./vue": {
+      "types": "./packages/vue/src/index.ts",
+      "default": "./packages/vue/src/index.ts"
+    },
     "./dist/*": "./dist/*"
   },
   "bin": {
@@ -37,7 +53,8 @@
   "files": [
     "dist",
     "dist-demo",
-    "bin"
+    "bin",
+    "packages"
   ],
   "keywords": [
     "audio-player",
@@ -57,13 +74,18 @@
   },
   "devDependencies": {
     "@types/node": "^26.5.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "cross-env": "^10.1.0",
     "csso": "^5.0.5",
     "html-minifier-terser": "^7.2.0",
     "magic-string": "^1.3.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^5.4.0",
     "vite": "^5.4.0",
     "vite-plugin-dts": "^3.9.1",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "vue": "^3.5.43"
   }
 }
