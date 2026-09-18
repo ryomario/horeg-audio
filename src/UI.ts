@@ -16,10 +16,12 @@ export interface UIEvents {
   onAddTrackFiles?: (files: File[]) => void;
   onAddTrackUrl?: (url: string, title?: string, artist?: string) => void;
   onRemoveTrack?: (index: number) => void;
+  onRecordToggle?: () => void;
 }
 
 export interface UIOptions {
   enableBassControl?: boolean;
+  enableRecordingControl?: boolean;
   initialBass?: number;
 }
 
@@ -35,6 +37,7 @@ export class UI {
   private nextBtn: HTMLButtonElement;
   private shuffleBtn: HTMLButtonElement;
   private loopBtn: HTMLButtonElement;
+  private recordBtn: HTMLButtonElement | null = null;
   private muteBtn: HTMLButtonElement;
   private drawerBtn: HTMLButtonElement;
 
@@ -179,6 +182,16 @@ export class UI {
     });
     leftControls.appendChild(this.shuffleBtn);
     leftControls.appendChild(this.loopBtn);
+
+    if (uiOptions?.enableRecordingControl) {
+      this.recordBtn = createElement('button', {
+        className: 'horeg-btn horeg-btn-record',
+        attributes: { 'aria-label': 'Record audio output', 'data-tooltip': 'Record stream (R)', type: 'button' },
+        innerHTML: ICONS.record
+      });
+      leftControls.appendChild(this.recordBtn);
+    }
+
     controlsRow.appendChild(leftControls);
 
     // Center: Prev, Play, Next
@@ -400,6 +413,14 @@ export class UI {
     this.shuffleBtn.addEventListener('click', () => this.events.onShuffleToggle());
     this.loopBtn.addEventListener('click', () => this.events.onLoopToggle());
     this.muteBtn.addEventListener('click', () => this.events.onMuteToggle());
+
+    if (this.recordBtn) {
+      this.recordBtn.addEventListener('click', () => {
+        if (this.events.onRecordToggle) {
+          this.events.onRecordToggle();
+        }
+      });
+    }
 
     this.volumeSlider.addEventListener('input', () => {
       const val = parseFloat(this.volumeSlider.value);
@@ -727,13 +748,40 @@ export class UI {
 
   public updateProgress(currentTime: number, duration: number): void {
     this.currentDuration = duration;
-    this.durationEl.textContent = formatTime(duration);
+    const isLive = duration === Infinity || (duration !== undefined && isNaN(duration));
 
-    if (!this.isScrubbing) {
-      this.currentTimeEl.textContent = formatTime(currentTime);
-      const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
-      this.fillBar.style.width = `${clamp(percent, 0, 100)}%`;
-      this.sliderTrack.setAttribute('aria-valuenow', Math.round(percent).toString());
+    if (isLive) {
+      this.durationEl.textContent = 'LIVE';
+      this.durationEl.classList.add('horeg-live-badge');
+      if (!this.isScrubbing) {
+        this.currentTimeEl.textContent = formatTime(currentTime);
+        this.fillBar.style.width = '100%';
+        this.sliderTrack.setAttribute('aria-valuenow', '100');
+      }
+    } else {
+      this.durationEl.classList.remove('horeg-live-badge');
+      this.durationEl.textContent = formatTime(duration);
+      if (!this.isScrubbing) {
+        this.currentTimeEl.textContent = formatTime(currentTime);
+        const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+        this.fillBar.style.width = `${clamp(percent, 0, 100)}%`;
+        this.sliderTrack.setAttribute('aria-valuenow', Math.round(percent).toString());
+      }
+    }
+  }
+
+  public updateRecordingState(isRecording: boolean): void {
+    if (!this.recordBtn) return;
+    if (isRecording) {
+      this.recordBtn.classList.add('recording');
+      this.recordBtn.innerHTML = ICONS.stop;
+      this.recordBtn.setAttribute('aria-label', 'Stop recording');
+      this.recordBtn.setAttribute('data-tooltip', 'Stop recording (R)');
+    } else {
+      this.recordBtn.classList.remove('recording');
+      this.recordBtn.innerHTML = ICONS.record;
+      this.recordBtn.setAttribute('aria-label', 'Record audio output');
+      this.recordBtn.setAttribute('data-tooltip', 'Record stream (R)');
     }
   }
 

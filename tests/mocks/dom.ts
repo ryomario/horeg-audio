@@ -208,7 +208,9 @@ export function setupDomMocks() {
   }
 
   if (typeof globalThis.document === 'undefined') {
+    const bodyEl = new (globalThis as any).HTMLElement('body');
     (globalThis as any).document = {
+      body: bodyEl,
       createElement(tag: string) {
         const CustomCtor = (globalThis as any).customElements?.get(tag);
         if (CustomCtor) {
@@ -220,6 +222,8 @@ export function setupDomMocks() {
         return new (globalThis as any).HTMLElement('div');
       }
     };
+  } else if (!(globalThis as any).document.body) {
+    (globalThis as any).document.body = new (globalThis as any).HTMLElement('body');
   }
   if (typeof globalThis.window === 'undefined') {
     (globalThis as any).window = {

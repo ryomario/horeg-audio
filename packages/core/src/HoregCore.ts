@@ -1,5 +1,5 @@
 import { AudioEngine, AudioEngineCallbacks, AudioEnergy } from '../../../src/AudioEngine';
-import { Track, LoopMode, EqPreset, EqBand, HoregPlayerOptions } from '../../../src/types';
+import { Track, LoopMode, EqPreset, EqBand, HoregPlayerOptions, RecordingOptions, RecordingResult, RecordingFormat, StreamInfo } from '../../../src/types';
 
 export interface HoregCoreState {
   isPlaying: boolean;
@@ -318,6 +318,34 @@ export class HoregCore {
 
   public getAudioEngine(): AudioEngine {
     return this.engine;
+  }
+
+  public isLiveStream(): boolean {
+    return this.engine.isLiveStream();
+  }
+
+  public getStreamInfo(): StreamInfo {
+    return this.engine.getStreamInfo();
+  }
+
+  public isRecording(): boolean {
+    return this.engine.isRecording();
+  }
+
+  public getRecordingDuration(): number {
+    return this.engine.getRecordingDuration();
+  }
+
+  public startRecording(options?: RecordingOptions): void {
+    this.engine.startRecording(options);
+  }
+
+  public stopRecording(format?: RecordingFormat): Promise<Blob> {
+    return this.engine.stopRecording(format);
+  }
+
+  public exportRecording(format?: RecordingFormat, filename?: string): Promise<RecordingResult> {
+    return this.engine.exportRecording(format, filename);
   }
 
   public destroy(): void {

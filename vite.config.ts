@@ -77,6 +77,22 @@ async function minifyHtmlContent(html: string): Promise<string> {
   }
 }
 
+function stripShebangPlugin(): Plugin {
+  return {
+    name: "vite-plugin-strip-shebang",
+    enforce: "pre",
+    transform(code: string) {
+      if (code.startsWith("#!")) {
+        return {
+          code: code.replace(/^#![^\n\r]*(\r?\n)?/, "// shebang stripped\n"),
+          map: null
+        };
+      }
+      return null;
+    }
+  };
+}
+
 function minifyLiteralsPlugin(): Plugin {
   return {
     name: "vite-plugin-minify-literals",
@@ -195,6 +211,7 @@ export default defineConfig(({ mode }) => {
   // ==========================================
   return {
     plugins: [
+      stripShebangPlugin(),
       // Minifikasi template literal CSS & HTML di dalam file source JS/TS
       minifyLiteralsPlugin(),
       dts({ rollupTypes: true })
