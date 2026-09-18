@@ -5,9 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { exec, execSync } from 'child_process';
-import playSound from 'play-sound';
-import soundPlay from 'sound-play';
+import { exec } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -472,107 +470,22 @@ export function getOrCreateDemoAudioFiles() {
   return { track1Path, track2Path };
 }
 
-// Native audio playback bridge powered by node packages (play-sound & sound-play)
-export class NodeAudioPlayer {
-  constructor() {
-    this.currentProcess = null;
-    this.currentPath = null;
-    this.volume = 0.8;
-    this.isPlaying = false;
-    this.activePids = new Set();
-    try {
-      this.player = typeof playSound === 'function' ? playSound() : null;
-    } catch (_) {
-      this.player = null;
-    }
-  }
+// Render clean CLI header showing web player URL and instructions
+export function renderTuiHeader(webUrl, playlist = []) {
+  const count = playlist.length;
+  const playlistInfo = count > 0 ? `Loaded ${count} track(s)` : 'Demo Sound Horeg Tracks';
 
-  playTrack(audioPath, volume = 0.8) {
-    this.stop();
-    this.currentPath = audioPath;
-    this.volume = volume;
-    this.isPlaying = true;
-
-    if (!audioPath || typeof audioPath !== 'string') return;
-
-    try {
-      if (this.player) {
-        const isWin = process.platform === 'win32';
-        const isMac = process.platform === 'darwin';
-
-        const opts = {};
-        if (isWin) {
-          const psCommand = `Add-Type -AssemblyName presentationCore; $p = New-Object system.windows.media.mediaplayer; $p.open($args[0]); $p.Volume = ${this.volume}; $p.Play(); Start-Sleep -s 86400; Exit;`;
-          opts.powershell = ['-NoProfile', '-Command', psCommand, '--'];
-        } else if (isMac) {
-          opts.afplay = ['-v', String(this.volume)];
-        }
-
-        const proc = this.player.play(audioPath, opts, () => {
-          if (proc && proc.pid) {
-            this.activePids.delete(proc.pid);
-          }
-          if (this.currentProcess === proc) {
-            this.currentProcess = null;
-          }
-        });
-
-        if (proc && proc.pid) {
-          this.activePids.add(proc.pid);
-          this.currentProcess = proc;
-        }
-        return;
-      }
-    } catch (_) {}
-  }
-
-  pause() {
-    this.isPlaying = false;
-    this.stop();
-  }
-
-  resume(audioPath, volume) {
-    const target = audioPath || this.currentPath;
-    const vol = volume !== undefined ? volume : this.volume;
-    if (target) {
-      this.playTrack(target, vol);
-    }
-  }
-
-  setVolume(volume) {
-    this.volume = Math.max(0, Math.min(1, volume));
-  }
-
-  stop() {
-    this.isPlaying = false;
-    this.currentProcess = null;
-
-    if (this.activePids.size > 0) {
-      for (const pid of this.activePids) {
-        try {
-          if (process.platform === 'win32') {
-            try {
-              execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
-            } catch (_) {}
-          } else {
-            try {
-              process.kill(-pid, 'SIGKILL');
-            } catch (_) {
-              try {
-                process.kill(pid, 'SIGKILL');
-              } catch (_) {}
-            }
-          }
-        } catch (_) {}
-      }
-      this.activePids.clear();
-    }
-  }
-
-  destroy() {
-    this.isPlaying = false;
-    this.stop();
-  }
+  return `
+\x1b[1;33m╔══════════════════════════════════════════════════════════════════════╗\x1b[0m
+\x1b[1;33m║                                                                      ║\x1b[0m
+\x1b[1;33m║   🔊  HOREG AUDIO PLAYER                                             ║\x1b[0m
+\x1b[1;33m║                                                                      ║\x1b[0m
+\x1b[1;33m║   ➜  Web Player: \x1b[1;36m${webUrl}\x1b[0m\x1b[1;33m (Press [W] to open in browser)     ║\x1b[0m
+\x1b[1;33m║   ➜  Playlist  : ${playlistInfo.padEnd(52, ' ')}║\x1b[0m
+\x1b[1;33m║                                                                      ║\x1b[0m
+\x1b[1;33m║   \x1b[1;37m[W]\x1b[0m Open in Browser                  \x1b[1;37m[Q]\x1b[0m Exit Terminal             \x1b[1;33m║\x1b[0m
+\x1b[1;33m╚══════════════════════════════════════════════════════════════════════╝\x1b[0m
+`;
 }
 
 const MIME_TYPES = {
@@ -929,255 +842,37 @@ export function startCli(argv = process.argv.slice(2)) {
 }
 
 function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
-  const state = {
-    isPlaying: true,
-    currentIndex: 0,
-    currentTime: 0,
-    volume: 0.8,
-    bassBoost: 6,
-    loopMode: 'all',
-    isShuffle: false
-  };
+  console.log(renderTuiHeader(webUrl, playlist));
 
-  const bassLevels = [-6, 0, 4, 8, 12, 15];
-  const audioPlayer = new NodeAudioPlayer();
-
-  const playTrackAtIndex = (index) => {
-    const curTrack = playlist[index];
-    if (!curTrack) return;
-    const targetPath = curTrack.fullPath || (curTrack.src && curTrack.src.startsWith('http') ? curTrack.src : `${webUrl}${curTrack.src}`);
-    if (state.isPlaying) {
-      audioPlayer.playTrack(targetPath, state.volume);
-    }
-  };
-
-  // Start audio playback for current track
-  playTrackAtIndex(state.currentIndex);
-
-  // Hide cursor in TTY
-  if (process.stdout.isTTY) {
-    process.stdout.write('\x1B[?25l');
-  }
-
+  let isClosing = false;
   const cleanup = () => {
-    if (process.stdout.isTTY) {
-      process.stdout.write('\x1B[?25h');
-    }
-    clearInterval(timer);
-    audioPlayer.destroy();
+    if (isClosing) return;
+    isClosing = true;
     onClose();
   };
 
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
-  process.on('exit', () => {
-    if (process.stdout.isTTY) {
-      process.stdout.write('\x1B[?25h');
-    }
-    audioPlayer.destroy();
-  });
 
-  const render = () => {
-    const curTrack = playlist[state.currentIndex] || { title: 'Unknown', artist: 'Unknown', duration: 180 };
-    const dur = curTrack.duration || 180;
-    const progressStr = renderProgressBar(state.currentTime, dur, 30);
-    const vis = renderAsciiVisualizer(state.bassBoost, state.currentTime, state.isPlaying);
-
-    const playStatus = state.isPlaying
-      ? `\x1b[1;32m▶ PLAYING\x1b[0m`
-      : `\x1b[1;33m⏸ PAUSED \x1b[0m`;
-
-    const strobeStatus = vis.isStrobe
-      ? `\x1b[1;37;41m[ ⚡ STROBE FLASH ACTIVE ⚡ ]\x1b[0m`
-      : `\x1b[2;37m[ ⚡ STROBE RIG STANDBY  ⚡ ]\x1b[0m`;
-
-    const punchText = vis.excursionPercent > 65 ? `\x1b[1;31m⚡ GLERR!\x1b[0m` : `\x1b[1;33mKINETIC\x1b[0m`;
-
-    const out = `\x1B[2J\x1B[0;0H
-\x1b[1;33m╔═══════════════════════════════════════════════════════════════════════════════╗\x1b[0m
-\x1b[1;33m║   🔊  HOREG AUDIO TERMINAL SOUND SYSTEM  -  SOUND GLERR CONCERT               ║\x1b[0m
-\x1b[1;33m╚═══════════════════════════════════════════════════════════════════════════════╝\x1b[0m
-
- \x1b[1;36m▶ NOW PLAYING:\x1b[0m
-   \x1b[1mTitle  :\x1b[0m ${curTrack.title}
-   \x1b[1mArtist :\x1b[0m ${curTrack.artist || 'Sound Horeg'}
-   \x1b[1mTrack  :\x1b[0m [${state.currentIndex + 1}/${playlist.length}]
-   \x1b[1mAlbum  :\x1b[0m ${curTrack.album || 'Horeg Rig Series'}
-
- \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
- ${playStatus}  [${progressStr}]  ${formatTime(state.currentTime)} / ${formatTime(dur)} (${Math.round((state.currentTime / dur) * 100)}%)
- \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
-
- \x1b[1;33m📊 REAL-TIME SPECTRUM WAVE:\x1b[0m
- \x1b[1;33m${vis.waveLine}\x1b[0m
-
- \x1b[1;33m🎚️ 5-BAND PARAMETRIC SPECTRUM:\x1b[0m
-\x1b[36m${vis.meterText}\x1b[0m
-
- \x1b[1;35m🔊 SUBWOOFER CONE EXCURSION:\x1b[0m
-   [${renderProgressBar(vis.excursionPercent, 100, 24)}] \x1b[1m${vis.excursionPercent}%\x1b[0m  PUNCH: ${punchText}
-
- \x1b[1;37m⚡ LIGHTING RIG:\x1b[0m
-   ${strobeStatus}
-
- \x1b[1m🎛️ CONTROLS STATUS:\x1b[0m
-   \x1b[1mVolume:\x1b[0m ${Math.round(state.volume * 100)}%   |   \x1b[1mBass Boost:\x1b[0m \x1b[1;33m${state.bassBoost >= 0 ? '+' : ''}${state.bassBoost} dB\x1b[0m   |   \x1b[1mLoop:\x1b[0m ${state.loopMode.toUpperCase()}   |   \x1b[1mShuffle:\x1b[0m ${state.isShuffle ? 'ON' : 'OFF'}
-   \x1b[2mWeb Player: ${webUrl} (Press [W] to open in browser)\x1b[0m
-
- \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
- \x1b[1;37m[Space]\x1b[0m Play/Pause  \x1b[1;37m[←/→]\x1b[0m Seek ±5s  \x1b[1;37m[↑/↓]\x1b[0m Vol ±5%  \x1b[1;37m[B]\x1b[0m Bass Boost  \x1b[1;37m[N/P]\x1b[0m Track
- \x1b[1;37m[L]\x1b[0m Loop Mode    \x1b[1;37m[S]\x1b[0m Shuffle   \x1b[1;37m[W]\x1b[0m Open Web  \x1b[1;37m[Q]\x1b[0m Exit
- \x1b[2;37m───────────────────────────────────────────────────────────────────────────────\x1b[0m
-`;
-    process.stdout.write(out);
-  };
-
-  const timer = setInterval(() => {
-    if (state.isPlaying) {
-      state.currentTime += 0.1;
-      const curTrack = playlist[state.currentIndex];
-      const dur = curTrack?.duration || 180;
-      if (state.currentTime >= dur) {
-        if (state.loopMode === 'one') {
-          state.currentTime = 0;
-          playTrackAtIndex(state.currentIndex);
-        } else {
-          // Next track
-          if (state.currentIndex + 1 < playlist.length) {
-            state.currentIndex++;
-            state.currentTime = 0;
-            playTrackAtIndex(state.currentIndex);
-          } else if (state.loopMode === 'all') {
-            state.currentIndex = 0;
-            state.currentTime = 0;
-            playTrackAtIndex(state.currentIndex);
-          } else {
-            state.isPlaying = false;
-            state.currentTime = dur;
-            audioPlayer.stop();
-          }
-        }
-      }
-    }
-    render();
-  }, 100);
-
-  // Keyboard input in raw mode
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
 
     process.stdin.on('data', (key) => {
-      // Ctrl+C or Q
+      // Q or Ctrl+C to exit
       if (key === '\u0003' || key.toLowerCase() === 'q') {
+        console.log('\nExiting Horeg Audio Player...');
         cleanup();
         return;
       }
 
-      // Space: play/pause
-      if (key === ' ') {
-        state.isPlaying = !state.isPlaying;
-        if (state.isPlaying) {
-          playTrackAtIndex(state.currentIndex);
-        } else {
-          audioPlayer.pause();
-        }
-        render();
-        return;
-      }
-
-      // Left arrow: seek -5s
-      if (key === '\u001b[D') {
-        state.currentTime = Math.max(0, state.currentTime - 5);
-        render();
-        return;
-      }
-
-      // Right arrow: seek +5s
-      if (key === '\u001b[C') {
-        const curTrack = playlist[state.currentIndex];
-        const dur = curTrack?.duration || 180;
-        state.currentTime = Math.min(dur, state.currentTime + 5);
-        render();
-        return;
-      }
-
-      // Up arrow: vol +0.05
-      if (key === '\u001b[A') {
-        state.volume = Math.min(1, Math.round((state.volume + 0.05) * 100) / 100);
-        audioPlayer.setVolume(state.volume);
-        render();
-        return;
-      }
-
-      // Down arrow: vol -0.05
-      if (key === '\u001b[B') {
-        state.volume = Math.max(0, Math.round((state.volume - 0.05) * 100) / 100);
-        audioPlayer.setVolume(state.volume);
-        render();
-        return;
-      }
-
-      // B: cycle bass boost
-      if (key.toLowerCase() === 'b') {
-        const currentIdx = bassLevels.indexOf(state.bassBoost);
-        const nextIdx = (currentIdx + 1) % bassLevels.length;
-        state.bassBoost = bassLevels[nextIdx];
-        render();
-        return;
-      }
-
-      // N: next track
-      if (key.toLowerCase() === 'n') {
-        if (state.isShuffle && playlist.length > 1) {
-          state.currentIndex = Math.floor(Math.random() * playlist.length);
-        } else {
-          state.currentIndex = (state.currentIndex + 1) % playlist.length;
-        }
-        state.currentTime = 0;
-        playTrackAtIndex(state.currentIndex);
-        render();
-        return;
-      }
-
-      // P: prev track
-      if (key.toLowerCase() === 'p') {
-        state.currentIndex = (state.currentIndex - 1 + playlist.length) % playlist.length;
-        state.currentTime = 0;
-        playTrackAtIndex(state.currentIndex);
-        render();
-        return;
-      }
-
-      // L: toggle loop mode
-      if (key.toLowerCase() === 'l') {
-        const modes = ['all', 'one', 'none'];
-        const nextModeIdx = (modes.indexOf(state.loopMode) + 1) % modes.length;
-        state.loopMode = modes[nextModeIdx];
-        render();
-        return;
-      }
-
-      // S: toggle shuffle
-      if (key.toLowerCase() === 's') {
-        state.isShuffle = !state.isShuffle;
-        render();
-        return;
-      }
-
-      // W: open browser & pause terminal audio to prevent double audio playback
+      // W to open browser
       if (key.toLowerCase() === 'w') {
-        state.isPlaying = false;
-        audioPlayer.pause();
+        console.log(`\x1b[1;36m➜ Opening Web Player in browser: ${webUrl}\x1b[0m`);
         openBrowser();
-        render();
-        return;
       }
     });
-  } else {
-    // Non-TTY environment
-    render();
   }
 }
 

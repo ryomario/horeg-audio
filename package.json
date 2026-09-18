@@ -87,9 +87,5 @@
     "vite-plugin-dts": "^3.9.1",
     "vitest": "^2.1.8",
     "vue": "^3.5.43"
-  },
-  "dependencies": {
-    "play-sound": "^1.1.6",
-    "sound-play": "^1.1.0"
   }
 }

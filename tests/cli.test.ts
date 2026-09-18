@@ -12,7 +12,7 @@ import {
   AUDIO_EXTENSIONS,
   createDemoWavBuffer,
   getOrCreateDemoAudioFiles,
-  NodeAudioPlayer
+  renderTuiHeader
 } from '../bin/cli.js';
 
 describe('CLI & TUI Unit Tests', () => {
@@ -129,7 +129,7 @@ describe('CLI & TUI Unit Tests', () => {
     });
   });
 
-  describe('NodeAudioPlayer & Demo Audio Generator', () => {
+  describe('Demo Audio Generator & TUI Header', () => {
     it('should generate valid WAV buffer with RIFF and fmt headers', () => {
       const buf = createDemoWavBuffer(1, 130, 50);
       expect(buf.toString('ascii', 0, 4)).toBe('RIFF');
@@ -146,43 +146,16 @@ describe('CLI & TUI Unit Tests', () => {
       expect(fs.statSync(track2Path).size).toBeGreaterThan(1000);
     });
 
-    it('should instantiate NodeAudioPlayer with play, pause, resume, volume, stop, and destroy', () => {
-      const player = new NodeAudioPlayer();
-      expect(player.isPlaying).toBe(false);
-      expect(player.volume).toBe(0.8);
-
-      // Volume control
-      player.setVolume(0.5);
-      expect(player.volume).toBe(0.5);
-      player.setVolume(1.5);
-      expect(player.volume).toBe(1);
-      player.setVolume(-0.2);
-      expect(player.volume).toBe(0);
-
-      // Playback lifecycle with invalid or dummy path does not throw
-      expect(() => player.playTrack(null as any)).not.toThrow();
-      expect(() => player.pause()).not.toThrow();
-      expect(player.isPlaying).toBe(false);
-
-      // Process tracking & cleanup
-      expect(player.activePids).toBeInstanceOf(Set);
-      expect(player.activePids.size).toBe(0);
-
-      expect(() => player.resume()).not.toThrow();
-      expect(() => player.stop()).not.toThrow();
-      expect(() => player.destroy()).not.toThrow();
-      expect(player.isPlaying).toBe(false);
-      expect(player.activePids.size).toBe(0);
-    });
-
-    it('should clear previous active processes when changing tracks or stopping', () => {
-      const player = new NodeAudioPlayer();
-      player.activePids.add(9999999);
-      expect(player.activePids.size).toBe(1);
-
-      player.stop();
-      expect(player.activePids.size).toBe(0);
-      expect(player.isPlaying).toBe(false);
+    it('should render TUI header with Web Player info and [W] shortcut', () => {
+      const header = renderTuiHeader('http://localhost:3000', [
+        { id: 1, title: 'Track 1' }
+      ]);
+      expect(header).toContain('HOREG AUDIO PLAYER');
+      expect(header).toContain('Web Player:');
+      expect(header).toContain('http://localhost:3000');
+      expect(header).toContain('(Press [W] to open in browser)');
+      expect(header).toContain('Open in Browser');
+      expect(header).toContain('Exit Terminal');
     });
   });
 });
