@@ -322,11 +322,11 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 10px var(--horeg-glow); }
     }
 
-    /* Track Display & Visualizer Section */
     /* 3-Soundbox Stage Visualizer */
     .horeg-soundbox-stage {
       position: relative;
       width: 100%;
+      min-height: 156px;
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -338,6 +338,14 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       border-radius: 12px;
       box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.35);
       overflow: visible;
+    }
+
+    .horeg-canvas-visualizer {
+      width: 100%;
+      height: 100%;
+      min-height: 156px;
+      display: block;
+      border-radius: 10px;
     }
 
     /* Base Soundbox Cabinet */

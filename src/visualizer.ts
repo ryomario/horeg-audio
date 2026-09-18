@@ -1,13 +1,15 @@
 import { AudioEnergy } from './AudioEngine';
-import { VisualizerMode } from './types';
+import { VisualizerMode, HoregTheme } from './types';
+import {
+  SubwooferExcursionSimulator,
+  StrobeLightingRig,
+  CanvasRenderer,
+  VisualizerEngineOptions
+} from './visualizer/index';
 
-export interface VisualizerOptions {
-  stageContainer: HTMLElement;
-  coverContainer?: HTMLElement;
-  enableAnimation?: boolean;
-  mode?: VisualizerMode;
-  getAudioEnergy?: () => AudioEnergy;
-}
+export * from './visualizer/index';
+
+export type VisualizerOptions = VisualizerEngineOptions;
 
 export class Visualizer {
   private stageContainer: HTMLElement;
@@ -18,11 +20,17 @@ export class Visualizer {
   private getAudioEnergy?: () => AudioEnergy;
   private mode: VisualizerMode = 'dom';
 
-  // Canvas Element
-  private canvasEl: HTMLCanvasElement | null = null;
-  private ctx: CanvasRenderingContext2D | null = null;
+  // Subwoofer excursion physical simulator (20-100 Hz responsive harmonic oscillator)
+  private excursionSimulator: SubwooferExcursionSimulator;
 
-  // DOM Elements
+  // Strobe Rig & Lighting effect with dynamic peak threshold detection
+  private strobeRig: StrobeLightingRig;
+
+  // GPU-accelerated HTML5 Canvas 2D modern renderer
+  private canvasRenderer: CanvasRenderer | null = null;
+  private canvasEl: HTMLCanvasElement | null = null;
+
+  // DOM Elements (Used when mode === 'dom')
   private leftBoxEl!: HTMLElement;
   private leftTopDriverEl!: HTMLElement;
   private leftBottomDriverEl!: HTMLElement;
@@ -39,32 +47,92 @@ export class Visualizer {
   private rightBottomDriverEl!: HTMLElement;
   private rightRipples: HTMLElement[] = [];
 
-  // Physics values for delta-time invariant bouncy excursion and decay
-  private smoothBass: number = 0;
-  private bassVelocity: number = 0;
+  // Frame-rate invariant satellite smoothing
   private smoothLeft: number = 0;
   private smoothRight: number = 0;
   private lastTimestamp: number = 0;
+
+  // Active theme configuration for matching glow colors
+  private theme: HoregTheme;
+  private resizeObserver: ResizeObserver | null = null;
 
   constructor(options: VisualizerOptions) {
     this.stageContainer = options.stageContainer;
     this.coverContainer = options.coverContainer || null;
     this.isEnabled = options.enableAnimation !== false;
     this.mode = options.mode || 'dom';
+    this.theme = options.theme || {};
     this.getAudioEnergy = options.getAudioEnergy;
 
+    this.excursionSimulator = new SubwooferExcursionSimulator();
+    this.strobeRig = new StrobeLightingRig();
+
     this.buildStage();
+    this.setupResizeObserver();
+
+    // Render immediately on page load so canvas is visible right away
+    this.renderIdle();
   }
 
   public setMode(mode: VisualizerMode): void {
     if (this.mode === mode) return;
     this.mode = mode;
     this.buildStage();
-    this.applyExcursion(this.smoothBass, this.smoothLeft, this.smoothRight);
+    this.renderIdle();
   }
 
   public getMode(): VisualizerMode {
     return this.mode;
+  }
+
+  public setTheme(theme: HoregTheme): void {
+    this.theme = { ...theme };
+    if (this.canvasRenderer) {
+      this.canvasRenderer.setTheme(this.theme);
+      if (!this.isRunning) {
+        this.renderIdle();
+      }
+    }
+  }
+
+  public getTheme(): HoregTheme {
+    return { ...this.theme };
+  }
+
+  public renderIdle(): void {
+    this.applyExcursion(0, 0, 0);
+    if (typeof window !== 'undefined' && typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        if (!this.isRunning) {
+          this.applyExcursion(0, 0, 0);
+        }
+      });
+    }
+  }
+
+  private setupResizeObserver(): void {
+    if (typeof window !== 'undefined' && typeof ResizeObserver !== 'undefined') {
+      try {
+        this.resizeObserver = new ResizeObserver(() => {
+          if (!this.isRunning) {
+            this.renderIdle();
+          }
+        });
+        this.resizeObserver.observe(this.stageContainer);
+      } catch (_) {}
+    }
+  }
+
+  public getExcursionSimulator(): SubwooferExcursionSimulator {
+    return this.excursionSimulator;
+  }
+
+  public getStrobeLightingRig(): StrobeLightingRig {
+    return this.strobeRig;
+  }
+
+  public getCanvasRenderer(): CanvasRenderer | null {
+    return this.canvasRenderer;
   }
 
   public setAudioEnergyGetter(fn: () => AudioEnergy): void {
@@ -75,14 +143,9 @@ export class Visualizer {
     this.stageContainer.innerHTML = '';
 
     if (this.mode === 'canvas') {
-      this.canvasEl = document.createElement('canvas');
-      this.canvasEl.className = 'horeg-canvas-visualizer';
-      this.canvasEl.style.width = '100%';
-      this.canvasEl.style.height = '100%';
-      this.canvasEl.style.display = 'block';
-      this.canvasEl.style.borderRadius = '12px';
+      this.canvasRenderer = new CanvasRenderer(undefined, this.theme);
+      this.canvasEl = this.canvasRenderer.getCanvas();
       this.stageContainer.appendChild(this.canvasEl);
-      this.ctx = this.canvasEl.getContext('2d');
 
       if (this.coverContainer) {
         const coverWrap = document.createElement('div');
@@ -99,6 +162,9 @@ export class Visualizer {
       return;
     }
 
+    this.canvasRenderer = null;
+    this.canvasEl = null;
+
     // 1. Left Soundbox (Satellite with 2 circular drivers & water ripples)
     this.leftBoxEl = document.createElement('div');
     this.leftBoxEl.className = 'horeg-soundbox is-satellite is-left';
@@ -109,7 +175,6 @@ export class Visualizer {
         <span class="horeg-box-bolt top-right"></span>
       </div>
       <div class="horeg-satellite-baffle">
-        <!-- Lingkaran 1 Kiri: Top Driver -->
         <div class="horeg-satellite-driver top">
           <span class="horeg-driver-ripple ripple-1"></span>
           <span class="horeg-driver-ripple ripple-2"></span>
@@ -119,7 +184,6 @@ export class Visualizer {
             </div>
           </div>
         </div>
-        <!-- Lingkaran 2 Kiri: Bottom Driver -->
         <div class="horeg-satellite-driver bottom">
           <span class="horeg-driver-ripple ripple-1"></span>
           <span class="horeg-driver-ripple ripple-2"></span>
@@ -145,7 +209,6 @@ export class Visualizer {
     this.subBoxEl = document.createElement('div');
     this.subBoxEl.className = 'horeg-soundbox is-subwoofer';
 
-    // Shockwave ripple rings
     const shockwavesWrap = document.createElement('div');
     shockwavesWrap.className = 'horeg-shockwaves-wrap';
     this.shockwave1El = document.createElement('div');
@@ -156,7 +219,6 @@ export class Visualizer {
     shockwavesWrap.appendChild(this.shockwave2El);
     this.subBoxEl.appendChild(shockwavesWrap);
 
-    // Subwoofer frame and bolts
     const subFrame = document.createElement('div');
     subFrame.className = 'horeg-sub-frame';
     subFrame.innerHTML = /* html */ `
@@ -171,7 +233,6 @@ export class Visualizer {
       </div>
     `;
 
-    // Subwoofer baffle & vibrating cone
     const subBaffle = document.createElement('div');
     subBaffle.className = 'horeg-sub-baffle';
 
@@ -181,7 +242,6 @@ export class Visualizer {
     this.subConeEl = document.createElement('div');
     this.subConeEl.className = 'horeg-sub-cone';
 
-    // Circular cover art mounted in center of the subwoofer cone
     if (this.coverContainer) {
       this.subConeEl.appendChild(this.coverContainer);
     }
@@ -202,7 +262,6 @@ export class Visualizer {
         <span class="horeg-box-bolt top-right"></span>
       </div>
       <div class="horeg-satellite-baffle">
-        <!-- Lingkaran 1 Kanan: Top Driver -->
         <div class="horeg-satellite-driver top">
           <span class="horeg-driver-ripple ripple-1"></span>
           <span class="horeg-driver-ripple ripple-2"></span>
@@ -212,7 +271,6 @@ export class Visualizer {
             </div>
           </div>
         </div>
-        <!-- Lingkaran 2 Kanan: Bottom Driver -->
         <div class="horeg-satellite-driver bottom">
           <span class="horeg-driver-ripple ripple-1"></span>
           <span class="horeg-driver-ripple ripple-2"></span>
@@ -279,22 +337,25 @@ export class Visualizer {
     let lastDecayTime = performance.now();
 
     const step = (now: number) => {
-      const dt = Math.min(0.04, Math.max(0.004, (now - lastDecayTime) / 1000));
+      const dt = Math.min(0.04, Math.max(0.002, (now - lastDecayTime) / 1000));
       lastDecayTime = now;
 
       const decayFactor = Math.exp(-18 * dt);
-      this.smoothBass *= decayFactor;
-      this.bassVelocity = 0;
       this.smoothLeft *= decayFactor;
       this.smoothRight *= decayFactor;
 
-      this.applyExcursion(this.smoothBass, this.smoothLeft, this.smoothRight);
+      // Decay physical excursion simulator
+      this.excursionSimulator.update(dt, 0, 0);
+      this.strobeRig.update(dt, 0, 0, 0);
 
-      if (this.smoothBass > 0.003 || this.smoothLeft > 0.003 || this.smoothRight > 0.003) {
+      const bass = this.excursionSimulator.getDisplacement();
+      this.applyExcursion(bass, this.smoothLeft, this.smoothRight);
+
+      if (bass > 0.003 || this.smoothLeft > 0.003 || this.smoothRight > 0.003) {
         this.animFrameId = requestAnimationFrame(step);
       } else {
-        this.smoothBass = 0;
-        this.bassVelocity = 0;
+        this.excursionSimulator.reset();
+        this.strobeRig.reset();
         this.smoothLeft = 0;
         this.smoothRight = 0;
         this.applyExcursion(0, 0, 0);
@@ -309,7 +370,7 @@ export class Visualizer {
     if (!this.isRunning) return;
 
     // Delta-time calculation for display-rate invariance (60Hz, 120Hz, 144Hz, 240Hz)
-    const dt = this.lastTimestamp ? Math.min(0.04, Math.max(0.004, (timestamp - this.lastTimestamp) / 1000)) : 0.016;
+    const dt = this.lastTimestamp ? Math.min(0.04, Math.max(0.002, (timestamp - this.lastTimestamp) / 1000)) : 0.016;
     this.lastTimestamp = timestamp;
 
     const energy = this.getAudioEnergy ? this.getAudioEnergy() : { bass: 0, midHigh: 0, left: 0, right: 0, bassPunch: 0 };
@@ -319,50 +380,13 @@ export class Visualizer {
     const targetRight = energy.right < 0.01 ? 0 : energy.right;
     const bassPunch = energy.bassPunch || 0;
 
-    // Direct Transient Kinetic Impulse: sharp kick onsets inject instantaneous Lorentz force
-    if (bassPunch > 0.04) {
-      this.bassVelocity += bassPunch * 1.5;
-    }
+    // 1. Update Subwoofer Excursion Simulator (20-100 Hz sub-bass physical model)
+    this.excursionSimulator.update(dt, targetBass, bassPunch);
 
-    // Physical Damped Harmonic Oscillator (Subwoofer spider & rubber surround simulation)
-    // Resonance angular frequency w0 = 42 rad/s (~6.7 Hz physical oscillation)
-    // Damping ratio zeta = 0.62 (underdamped: permits realistic elastic overshoot & bouncy recoil)
-    const w0 = 42.0;
-    const zeta = 0.62;
-    const k = w0 * w0;      // spring constant (~1764)
-    const c = 2 * zeta * w0; // damping coefficient (~52.1)
+    // 2. Update Strobe Rig & Lighting Effect (Dynamic peak threshold detector)
+    this.strobeRig.update(dt, this.excursionSimulator.getDisplacement(), bassPunch, energy.midHigh);
 
-    // Sub-stepping for unconditional numerical stability on any framerate
-    const subSteps = dt > 0.022 ? 2 : 1;
-    const subDt = dt / subSteps;
-
-    for (let s = 0; s < subSteps; s++) {
-      const displacement = this.smoothBass - targetBass;
-      // Progressive spring resistance as cone reaches extreme stroke
-      const progressiveFactor = this.smoothBass > 0.60 ? 1.0 + (this.smoothBass - 0.60) * 3.5 : 1.0;
-      const springForce = -k * displacement * progressiveFactor;
-      const dampingForce = -c * this.bassVelocity;
-      const acceleration = springForce + dampingForce;
-
-      this.bassVelocity += acceleration * subDt;
-      this.smoothBass += this.bassVelocity * subDt;
-
-      // Mechanical stroke boundaries (no inward inversion)
-      if (this.smoothBass < 0) {
-        this.smoothBass = 0;
-        this.bassVelocity = Math.max(0, -this.bassVelocity * 0.25);
-      } else if (this.smoothBass > 1.25) {
-        this.smoothBass = 1.25;
-        this.bassVelocity = Math.min(0, -this.bassVelocity * 0.25);
-      }
-    }
-
-    if (this.smoothBass < 0.001 && Math.abs(this.bassVelocity) < 0.005) {
-      this.smoothBass = 0;
-      this.bassVelocity = 0;
-    }
-
-    // Satellites frame-rate invariant exponential smoothing:
+    // 3. Satellites frame-rate invariant exponential smoothing
     const satAlpha = 1 - Math.exp(-24 * dt);
     this.smoothLeft += (targetLeft - this.smoothLeft) * satAlpha;
     if (this.smoothLeft < 0.005) this.smoothLeft = 0;
@@ -370,204 +394,42 @@ export class Visualizer {
     this.smoothRight += (targetRight - this.smoothRight) * satAlpha;
     if (this.smoothRight < 0.005) this.smoothRight = 0;
 
-    this.applyExcursion(this.smoothBass, this.smoothLeft, this.smoothRight);
+    this.applyExcursion(this.excursionSimulator.getDisplacement(), this.smoothLeft, this.smoothRight);
 
     this.animFrameId = requestAnimationFrame(this.loop);
   };
 
-  private drawCanvas(bass: number, left: number, right: number): void {
-    if (!this.canvasEl || !this.ctx) return;
-    const rect = this.canvasEl.getBoundingClientRect();
-    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const w = Math.floor(rect.width);
-    const h = Math.floor(rect.height);
-    if (w === 0 || h === 0) return;
-
-    if (this.canvasEl.width !== w * dpr || this.canvasEl.height !== h * dpr) {
-      this.canvasEl.width = w * dpr;
-      this.canvasEl.height = h * dpr;
-    }
-
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, w, h);
-
-    const centerY = h / 2;
-    const centerX = w / 2;
-
-    // 1. Left Satellite Speaker
-    const satW = Math.min(84, w * 0.18);
-    const satH = Math.min(145, h * 0.78);
-    const leftX = Math.max(12, centerX - satW * 2.2);
-
-    ctx.fillStyle = '#121214';
-    ctx.strokeStyle = '#27272a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(leftX, centerY - satH / 2, satW, satH, 6) : ctx.rect(leftX, centerY - satH / 2, satW, satH);
-    ctx.fill();
-    ctx.stroke();
-
-    const driverRadius = satW * 0.32;
-    const leftScale = 1.0 + left * 0.18;
-    const leftTopY = centerY - satH * 0.23;
-    const leftBottomY = centerY + satH * 0.23;
-    const satCenterX = leftX + satW / 2;
-
-    [leftTopY, leftBottomY].forEach((driverY) => {
-      if (left > 0.04) {
-        ctx.beginPath();
-        ctx.arc(satCenterX, driverY, driverRadius * (1.2 + left * 0.4), 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.8, left * 0.75)})`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.arc(satCenterX, driverY, driverRadius * leftScale, 0, Math.PI * 2);
-      ctx.fillStyle = '#18181b';
-      ctx.fill();
-      ctx.strokeStyle = '#3f3f46';
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(satCenterX, driverY, driverRadius * 0.35 * leftScale, 0, Math.PI * 2);
-      ctx.fillStyle = '#f59e0b';
-      ctx.fill();
-    });
-
-    // 2. Right Satellite Speaker
-    const rightX = Math.min(w - satW - 12, centerX + satW * 1.2);
-    ctx.fillStyle = '#121214';
-    ctx.strokeStyle = '#27272a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(rightX, centerY - satH / 2, satW, satH, 6) : ctx.rect(rightX, centerY - satH / 2, satW, satH);
-    ctx.fill();
-    ctx.stroke();
-
-    const rightScale = 1.0 + right * 0.18;
-    const satRightCenterX = rightX + satW / 2;
-    [leftTopY, leftBottomY].forEach((driverY) => {
-      if (right > 0.04) {
-        ctx.beginPath();
-        ctx.arc(satRightCenterX, driverY, driverRadius * (1.2 + right * 0.4), 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.8, right * 0.75)})`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.arc(satRightCenterX, driverY, driverRadius * rightScale, 0, Math.PI * 2);
-      ctx.fillStyle = '#18181b';
-      ctx.fill();
-      ctx.strokeStyle = '#3f3f46';
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(satRightCenterX, driverY, driverRadius * 0.35 * rightScale, 0, Math.PI * 2);
-      ctx.fillStyle = '#f59e0b';
-      ctx.fill();
-    });
-
-    // 3. Center Monster Subwoofer
-    const subSize = Math.min(w * 0.40, h * 0.88);
-    const subRadius = subSize / 2;
-
-    // Shockwave expansion rings
-    if (bass > 0.45) {
-      const shockPower = (bass - 0.45) / 0.55;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, subRadius * (1.08 + shockPower * 0.48), 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.85, shockPower * 1.2)})`;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, subRadius * (1.28 + shockPower * 0.65), 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(239, 68, 68, ${Math.max(0, (shockPower - 0.15) * 0.9)})`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    // Subwoofer Cabinet (Micro-rumble vibration on heavy bass)
-    let rumbleX = 0;
-    let rumbleY = 0;
-    if (bass > 0.45) {
-      const r = (bass - 0.45) / 0.55;
-      rumbleX = (Math.random() - 0.5) * 1.8 * r;
-      rumbleY = (Math.random() - 0.5) * 1.8 * r;
-    }
-    const subBoxX = centerX - subSize / 2 + rumbleX;
-    const subBoxY = centerY - subSize / 2 + rumbleY;
-
-    ctx.fillStyle = '#18181b';
-    ctx.strokeStyle = '#27272a';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(subBoxX, subBoxY, subSize, subSize, 12) : ctx.rect(subBoxX, subBoxY, subSize, subSize);
-    ctx.fill();
-    ctx.stroke();
-
-    // Rubber Surround
-    const surroundScale = 1.0 + bass * 0.08;
-    ctx.beginPath();
-    ctx.arc(centerX + rumbleX, centerY + rumbleY, subRadius * 0.82 * surroundScale, 0, Math.PI * 2);
-    ctx.fillStyle = '#27272a';
-    ctx.fill();
-
-    // Subwoofer Cone Excursion
-    const coneScale = 1.0 + bass * 0.24;
-    const coneRadius = subRadius * 0.70 * coneScale;
-    const radGrad = ctx.createRadialGradient(centerX + rumbleX, centerY + rumbleY, coneRadius * 0.1, centerX + rumbleX, centerY + rumbleY, coneRadius);
-    radGrad.addColorStop(0, '#27272a');
-    radGrad.addColorStop(0.8, '#121214');
-    radGrad.addColorStop(1, '#09090b');
-
-    ctx.beginPath();
-    ctx.arc(centerX + rumbleX, centerY + rumbleY, coneRadius, 0, Math.PI * 2);
-    ctx.fillStyle = radGrad;
-    ctx.fill();
-    ctx.strokeStyle = `rgba(245, 158, 11, ${Math.min(0.8, bass * 0.9)})`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Center dust cap
-    ctx.beginPath();
-    ctx.arc(centerX + rumbleX, centerY + rumbleY, coneRadius * 0.32, 0, Math.PI * 2);
-    ctx.fillStyle = '#18181b';
-    ctx.fill();
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    ctx.restore();
-
-    if (this.coverContainer) {
-      const coverScale = 1.0 + bass * 0.12;
-      this.coverContainer.style.transform = `scale(${coverScale.toFixed(3)})`;
-    }
-  }
-
   private applyExcursion(bass: number, left: number, right: number): void {
+    // Canvas Mode: 100% GPU frame rendering on 2D context without any DOM style recalculations
     if (this.mode === 'canvas') {
-      this.drawCanvas(bass, left, right);
+      if (this.canvasRenderer) {
+        this.canvasRenderer.render({
+          bass,
+          left,
+          right,
+          coneScale: this.excursionSimulator.getConeScale(),
+          surroundScale: this.excursionSimulator.getSurroundScale(),
+          shockwaves: this.excursionSimulator.getShockwaves(),
+          strobeState: this.strobeRig.getState(),
+          coverElement: this.coverContainer
+        });
+      }
       return;
     }
 
-    // 1. Center Monster Subwoofer: Proportional excursion scaled according to dB capacity
-    const subScale = 1.0 + bass * 0.24;
+    // DOM Mode (Fallback): DOM element transforms and styles
+    const subScale = this.excursionSimulator.getConeScale();
     this.subConeEl.style.transform = `scale(${subScale.toFixed(3)})`;
 
-    // 3D Rubber Surround Stretch
     if (this.subSurroundEl) {
-      const surroundScale = 1.0 + bass * 0.08;
+      const surroundScale = this.excursionSimulator.getSurroundScale();
       this.subSurroundEl.style.transform = `scale(${surroundScale.toFixed(3)})`;
     }
 
-    // Dynamic 3D Inset Shadow (Depth Illusion: softens when cone extends outward)
     const shadowBlur = Math.round(10 + bass * 10);
     const shadowSpread = Math.round(bass * 3);
     this.subConeEl.style.boxShadow = `0 0 ${shadowBlur}px ${shadowSpread}px rgba(0, 0, 0, 0.7)`;
 
-    // Subwoofer Cabinet Micro-Rumble (Sound Horeg Power Vibration on heavy bass hits)
     if (bass > 0.45) {
       const rumbleIntensity = (bass - 0.45) / 0.55;
       const rx = ((Math.random() - 0.5) * 1.5 * rumbleIntensity).toFixed(2);
@@ -578,7 +440,6 @@ export class Visualizer {
       this.subBoxEl.style.transform = 'translate(0px, 0px) scale(1)';
     }
 
-    // Subwoofer Shockwaves: Trigger strictly on heavy bass hits (> 0.48), scaled to capacity
     if (bass > 0.48) {
       const shockPower = (bass - 0.48) / 0.52;
       const waveScale1 = 1.0 + shockPower * 0.45;
@@ -597,7 +458,6 @@ export class Visualizer {
       this.shockwave2El.style.opacity = '0';
     }
 
-    // 2. Left & Right Satellites (Cones excursion)
     const leftScale = 1.0 + left * 0.12;
     if (this.leftTopDriverEl) this.leftTopDriverEl.style.transform = `scale(${leftScale.toFixed(3)})`;
     if (this.leftBottomDriverEl) this.leftBottomDriverEl.style.transform = `scale(${leftScale.toFixed(3)})`;
@@ -606,12 +466,11 @@ export class Visualizer {
     if (this.rightTopDriverEl) this.rightTopDriverEl.style.transform = `scale(${rightScale.toFixed(3)})`;
     if (this.rightBottomDriverEl) this.rightBottomDriverEl.style.transform = `scale(${rightScale.toFixed(3)})`;
 
-    // 3. Compact Water-like Ripples on the 4 Satellite Circles (2 Left, 2 Right)
     const applyRipples = (ripples: HTMLElement[], intensity: number) => {
       const hasSignal = intensity > 0.04;
       for (let i = 0; i < ripples.length; i++) {
         const ripple = ripples[i];
-        const isSecond = ripple.classList.contains('ripple-2');
+        const isSecond = ripple.classList ? ripple.classList.contains('ripple-2') : false;
 
         if (!hasSignal) {
           ripple.style.transform = 'scale(1)';
@@ -635,8 +494,15 @@ export class Visualizer {
 
   public destroy(): void {
     this.stop();
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+    if (this.canvasRenderer) {
+      this.canvasRenderer.destroy();
+      this.canvasRenderer = null;
+    }
     this.canvasEl = null;
-    this.ctx = null;
     this.stageContainer.innerHTML = '';
   }
 }
