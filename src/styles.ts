@@ -322,11 +322,11 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 10px var(--horeg-glow); }
     }
 
-    /* Track Display & Visualizer Section */
     /* 3-Soundbox Stage Visualizer */
     .horeg-soundbox-stage {
       position: relative;
       width: 100%;
+      min-height: 156px;
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -338,6 +338,14 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       border-radius: 12px;
       box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.35);
       overflow: visible;
+    }
+
+    .horeg-canvas-visualizer {
+      width: 100%;
+      height: 100%;
+      min-height: 156px;
+      display: block;
+      border-radius: 10px;
     }
 
     /* Base Soundbox Cabinet */
@@ -883,6 +891,35 @@ export function generateStyles(theme: HoregTheme = {}, maxWidth?: number | strin
       background: var(--horeg-btn-active-bg);
       text-shadow: 0 0 8px var(--horeg-glow);
       box-shadow: inset 0 0 8px rgba(255, 255, 255, 0.05);
+    }
+
+    .horeg-btn.recording {
+      color: var(--horeg-accent, #ef4444) !important;
+      background: rgba(239, 68, 68, 0.18) !important;
+      animation: horeg-rec-pulse 1.2s infinite ease-in-out;
+    }
+
+    @keyframes horeg-rec-pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.92); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .horeg-live-badge {
+      display: inline-block;
+      padding: 1px 5px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      color: #fff !important;
+      background: var(--horeg-accent, #ef4444);
+      border-radius: 3px;
+      animation: horeg-live-pulse 1.5s infinite alternate ease-in-out;
+    }
+
+    @keyframes horeg-live-pulse {
+      0% { opacity: 1; }
+      100% { opacity: 0.65; }
     }
 
     /* Tooltip Bubble */

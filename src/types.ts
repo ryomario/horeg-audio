@@ -40,10 +40,51 @@ export interface PersistenceOptions {
   loop?: boolean;
   shuffle?: boolean;
   lastTrack?: boolean;
+  eqPreset?: boolean;
+  eqBandGains?: boolean;
+  visualizerMode?: boolean;
+  playlist?: boolean;
+}
+
+export type RecordingFormat = 'webm' | 'wav';
+
+export interface RecordingOptions {
+  format?: RecordingFormat;
+  mimeType?: string;
+  audioBitsPerSecond?: number;
+  timeslice?: number;
+}
+
+export interface RecordingResult {
+  blob: Blob;
+  url: string;
+  format: RecordingFormat;
+  duration: number;
+  download: (filename?: string) => void;
+}
+
+export type StreamType = 'direct' | 'hls' | 'radio' | 'live';
+
+export interface StreamInfo {
+  type: StreamType;
+  isLive: boolean;
+  url: string;
 }
 
 export type VisualizerMode = 'dom' | 'canvas';
 export type EqPreset = 'flat' | 'horeg-sub-punch' | 'vocal-carnival' | 'bass-extreme';
+export type EqBand = 'sub' | 'low' | 'mid' | 'upper-mid' | 'high';
+
+export interface EqPresetConfig {
+  name: string;
+  sub: number;
+  low: number;
+  mid: number;
+  upperMid: number;
+  high: number;
+  /** Backward compatibility alias for bass boost offset */
+  bass?: number;
+}
 
 export interface HoregPlayerOptions {
   container: string | HTMLElement;
@@ -59,9 +100,12 @@ export interface HoregPlayerOptions {
   theme?: HoregTheme;
   visualizerMode?: VisualizerMode; // 'dom' (default) or 'canvas'
   eqPreset?: EqPreset; // Equalizer sound preset (default: 'flat')
+  eqBandGains?: Partial<Record<EqBand, number>>; // Initial manual band gains
   preloadNext?: boolean; // Preload next track in playlist for gapless playback (default: true)
   mediaSession?: boolean; // Integrate with OS Media Session API (default: true)
   persistState?: boolean | PersistenceOptions; // Persist user settings to localStorage (default: false)
+  enableRecordingControl?: boolean; // Show record button in UI (default: false)
+  hlsConfig?: any; // Custom options passed to Hls.js instance if used
   onPlay?: (track: Track) => void;
   onPause?: () => void;
   onTrackChange?: (track: Track, index: number) => void;
@@ -69,8 +113,13 @@ export interface HoregPlayerOptions {
   onTimeUpdate?: (currentTime: number, duration: number) => void;
   onBassChange?: (bassLevel: number) => void;
   onEqChange?: (preset: EqPreset) => void;
+  onBandGainChange?: (band: EqBand, gainDb: number) => void;
   onEnded?: (track: Track) => void;
   onError?: (error: MediaError | Error) => void;
+  onRecordingStart?: () => void;
+  onRecordingStop?: (result: RecordingResult) => void;
+  onRecordingData?: (chunk: Blob) => void;
+  onStreamTypeDetected?: (info: StreamInfo) => void;
 }
 
 export interface HoregPlayerState {

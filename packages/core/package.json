@@ -1,0 +1,25 @@
+{
+  "name": "@horeg-audio/core",
+  "version": "1.4.0",
+  "description": "Headless Web Audio API core engine, parametric equalizer, dynamic limiter, and state manager for sound horeg.",
+  "author": "Mario <ardamomo3@gmail.com>",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "keywords": [
+    "horeg-audio",
+    "audio-engine",
+    "web-audio-api",
+    "equalizer",
+    "limiter",
+    "sound-horeg"
+  ]
+}

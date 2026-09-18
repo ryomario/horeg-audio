@@ -1,11 +1,45 @@
-import { Track, LoopMode, HoregPlayerOptions, EqPreset } from './types';
+import { Track, LoopMode, HoregPlayerOptions, EqPreset, EqBand, EqPresetConfig, RecordingOptions, RecordingResult, RecordingFormat, StreamInfo } from './types';
 import { clamp } from './utils/time';
+import { StreamAdapter } from './stream/StreamAdapter';
+import { encodePcmToWav } from './utils/wav';
 
-export const EQ_PRESETS: Record<EqPreset, { name: string; bass: number; mid: number; high: number }> = {
-  flat: { name: 'Flat Monitor', bass: 0, mid: 0, high: 0 },
-  'horeg-sub-punch': { name: 'Horeg Sub-Punch', bass: 7, mid: -2, high: 3 },
-  'vocal-carnival': { name: 'Vocal Carnival', bass: -2, mid: 6, high: 4 },
-  'bass-extreme': { name: 'Bass Extreme', bass: 11, mid: -4, high: 1 }
+export const EQ_PRESETS: Record<EqPreset, EqPresetConfig> = {
+  flat: {
+    name: 'Flat Monitor',
+    sub: 0,
+    low: 0,
+    mid: 0,
+    upperMid: 0,
+    high: 0,
+    bass: 0
+  },
+  'horeg-sub-punch': {
+    name: 'Horeg Sub-Punch',
+    sub: 8,
+    low: 5,
+    mid: -2,
+    upperMid: 1,
+    high: 3,
+    bass: 7
+  },
+  'vocal-carnival': {
+    name: 'Vocal Carnival',
+    sub: -2,
+    low: 0,
+    mid: 4,
+    upperMid: 6,
+    high: 3,
+    bass: -2
+  },
+  'bass-extreme': {
+    name: 'Bass Extreme',
+    sub: 12,
+    low: 7,
+    mid: -3,
+    upperMid: 0,
+    high: 2,
+    bass: 11
+  }
 };
 
 export interface AudioEngineCallbacks {
@@ -18,6 +52,12 @@ export interface AudioEngineCallbacks {
   onEnded?: (track: Track) => void;
   onError?: (error: MediaError | Error) => void;
   onLoadingChange?: (isLoading: boolean) => void;
+  onEqChange?: (preset: EqPreset) => void;
+  onBandGainChange?: (band: EqBand, gainDb: number) => void;
+  onRecordingStart?: () => void;
+  onRecordingStop?: (result: RecordingResult) => void;
+  onRecordingData?: (chunk: Blob) => void;
+  onStreamTypeDetected?: (info: StreamInfo) => void;
 }
 
 export interface AudioEnergy {
@@ -44,9 +84,22 @@ export class AudioEngine {
 
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
-  private bassFilter: BiquadFilterNode | null = null;
-  private eqMidFilter: BiquadFilterNode | null = null;
-  private eqHighFilter: BiquadFilterNode | null = null;
+
+  // 5-Band Parametric Equalizer Filters
+  private eqFilters: Record<EqBand, BiquadFilterNode | null> = {
+    sub: null,
+    low: null,
+    mid: null,
+    'upper-mid': null,
+    high: null
+  };
+  private bandGains: Record<EqBand, number> = {
+    sub: 0,
+    low: 0,
+    mid: 0,
+    'upper-mid': 0,
+    high: 0
+  };
   private currentEqPreset: EqPreset = 'flat';
   private headroomGain: GainNode | null = null;
   private masterGain: GainNode | null = null;
@@ -58,8 +111,34 @@ export class AudioEngine {
   private bassPulseEnvelope: number = 0;
   private bassDbFloor: number = -60;
 
+  // Modern Platform Integrations: Recording & Streaming Adapter
+  private streamAdapter: StreamAdapter;
+  private mediaStreamDestination: MediaStreamAudioDestinationNode | null = null;
+  private mediaRecorder: MediaRecorder | null = null;
+  private isCurrentlyRecording: boolean = false;
+  private recordingStartTime: number = 0;
+  private recordedChunks: Blob[] = [];
+  private pcmNode: ScriptProcessorNode | null = null;
+  private pcmLeftChunks: Float32Array[] = [];
+  private pcmRightChunks: Float32Array[] = [];
+  private currentStreamInfo: StreamInfo = { type: 'direct', isLive: false, url: '' };
+
   constructor(options: HoregPlayerOptions, callbacks: AudioEngineCallbacks = {}) {
     this.audio = new Audio();
+    this.streamAdapter = new StreamAdapter(this.audio, {
+      hlsConfig: options.hlsConfig,
+      onStreamTypeDetected: (info) => {
+        this.currentStreamInfo = info;
+        if (this.callbacks.onStreamTypeDetected) {
+          this.callbacks.onStreamTypeDetected(info);
+        }
+      },
+      onError: (err) => {
+        if (this.callbacks.onError) {
+          this.callbacks.onError(err);
+        }
+      }
+    });
     this.playlist = [...(options.playlist || [])];
     this.currentIndex = options.initialIndex !== undefined ? clamp(options.initialIndex, 0, Math.max(0, this.playlist.length - 1)) : 0;
     this.loopMode = options.loop || 'all';
@@ -68,6 +147,13 @@ export class AudioEngine {
     this.currentBassGain = options.bassBoost !== undefined ? clamp(options.bassBoost, -10, 15) : 0;
     this.currentEqPreset = options.eqPreset || 'flat';
     this.preloadEnabled = options.preloadNext !== false;
+    if (options.eqBandGains) {
+      for (const b of ['sub', 'low', 'mid', 'upper-mid', 'high'] as EqBand[]) {
+        if (typeof options.eqBandGains[b] === 'number') {
+          this.bandGains[b] = clamp(options.eqBandGains[b]!, -15, 15);
+        }
+      }
+    }
     this.callbacks = callbacks || {
       onPlay: options.onPlay,
       onPause: options.onPause,
@@ -75,7 +161,13 @@ export class AudioEngine {
       onPlaylistChange: options.onPlaylistChange,
       onTimeUpdate: options.onTimeUpdate,
       onEnded: options.onEnded,
-      onError: options.onError
+      onError: options.onError,
+      onEqChange: options.onEqChange,
+      onBandGainChange: options.onBandGainChange,
+      onRecordingStart: options.onRecordingStart,
+      onRecordingStop: options.onRecordingStop,
+      onRecordingData: options.onRecordingData,
+      onStreamTypeDetected: options.onStreamTypeDetected
     };
 
     if (this.preloadEnabled && typeof Audio !== 'undefined') {
@@ -313,6 +405,9 @@ export class AudioEngine {
   }
 
   public getDuration(): number {
+    if (this.isLiveStream()) {
+      return Infinity;
+    }
     const dur = this.audio.duration;
     if (dur && !isNaN(dur) && isFinite(dur)) {
       return dur;
@@ -382,7 +477,7 @@ export class AudioEngine {
       this.audio.removeAttribute('crossorigin');
     }
 
-    this.audio.src = track.src;
+    this.currentStreamInfo = this.streamAdapter.load(track.src);
 
     if (this.callbacks.onTrackChange) {
       this.callbacks.onTrackChange(track, this.currentIndex);
@@ -430,24 +525,44 @@ export class AudioEngine {
 
       const initialPreset = EQ_PRESETS[this.currentEqPreset] || EQ_PRESETS.flat;
 
-      // Lowshelf filter at 110 Hz for authentic horeg sub-bass punch
-      this.bassFilter = this.audioContext.createBiquadFilter();
-      this.bassFilter.type = 'lowshelf';
-      this.bassFilter.frequency.value = 110;
-      this.bassFilter.gain.value = clamp(this.currentBassGain + initialPreset.bass, -10, 15);
+      // 5-Band Parametric Equalizer Filter Chain
+      // 1. Sub (lowshelf, 60 Hz) - handles deep sub-rumble and bass boost
+      const subFilter = this.audioContext.createBiquadFilter();
+      subFilter.type = 'lowshelf';
+      subFilter.frequency.value = 60;
+      subFilter.gain.value = clamp(this.bandGains.sub + initialPreset.sub + this.currentBassGain, -15, 18);
+      this.eqFilters.sub = subFilter;
 
-      // Equalizer Mid Filter: peaking filter centered around 1.8 kHz
-      this.eqMidFilter = this.audioContext.createBiquadFilter();
-      this.eqMidFilter.type = 'peaking';
-      this.eqMidFilter.frequency.value = 1800;
-      this.eqMidFilter.Q.value = 0.9;
-      this.eqMidFilter.gain.value = initialPreset.mid;
+      // 2. Low (peaking, 250 Hz, Q 1.0) - punch & lower harmonics
+      const lowFilter = this.audioContext.createBiquadFilter();
+      lowFilter.type = 'peaking';
+      lowFilter.frequency.value = 250;
+      lowFilter.Q.value = 1.0;
+      lowFilter.gain.value = clamp(this.bandGains.low + initialPreset.low, -15, 15);
+      this.eqFilters.low = lowFilter;
 
-      // Equalizer High Filter: highshelf filter above 7 kHz
-      this.eqHighFilter = this.audioContext.createBiquadFilter();
-      this.eqHighFilter.type = 'highshelf';
-      this.eqHighFilter.frequency.value = 7000;
-      this.eqHighFilter.gain.value = initialPreset.high;
+      // 3. Mid (peaking, 1000 Hz, Q 1.0) - vocal body & instrumentation
+      const midFilter = this.audioContext.createBiquadFilter();
+      midFilter.type = 'peaking';
+      midFilter.frequency.value = 1000;
+      midFilter.Q.value = 1.0;
+      midFilter.gain.value = clamp(this.bandGains.mid + initialPreset.mid, -15, 15);
+      this.eqFilters.mid = midFilter;
+
+      // 4. Upper-Mid (peaking, 3500 Hz, Q 1.0) - vocal clarity & presence
+      const upperMidFilter = this.audioContext.createBiquadFilter();
+      upperMidFilter.type = 'peaking';
+      upperMidFilter.frequency.value = 3500;
+      upperMidFilter.Q.value = 1.0;
+      upperMidFilter.gain.value = clamp(this.bandGains['upper-mid'] + initialPreset.upperMid, -15, 15);
+      this.eqFilters['upper-mid'] = upperMidFilter;
+
+      // 5. High (highshelf, 10000 Hz) - treble shimmer & air
+      const highFilter = this.audioContext.createBiquadFilter();
+      highFilter.type = 'highshelf';
+      highFilter.frequency.value = 10000;
+      highFilter.gain.value = clamp(this.bandGains.high + initialPreset.high, -15, 15);
+      this.eqFilters.high = highFilter;
 
       // Headroom gain staging node: protects against digital clipping during heavy bass boost
       this.headroomGain = this.audioContext.createGain();
@@ -469,15 +584,22 @@ export class AudioEngine {
 
       this.sourceNode = this.audioContext.createMediaElementSource(this.audio);
 
-      // Graph: sourceNode -> bassFilter -> eqMidFilter -> eqHighFilter -> headroomGain -> masterGain -> analyser -> limiterNode -> destination
-      this.sourceNode.connect(this.bassFilter);
-      this.bassFilter.connect(this.eqMidFilter);
-      this.eqMidFilter.connect(this.eqHighFilter);
-      this.eqHighFilter.connect(this.headroomGain);
+      // Graph: sourceNode -> sub -> low -> mid -> upperMid -> high -> headroomGain -> masterGain -> analyser -> limiterNode -> destination
+      this.sourceNode.connect(subFilter);
+      subFilter.connect(lowFilter);
+      lowFilter.connect(midFilter);
+      midFilter.connect(upperMidFilter);
+      upperMidFilter.connect(highFilter);
+      highFilter.connect(this.headroomGain);
       this.headroomGain.connect(this.masterGain);
       this.masterGain.connect(this.analyser);
       this.analyser.connect(this.limiterNode);
       this.limiterNode.connect(this.audioContext.destination);
+
+      if (typeof this.audioContext.createMediaStreamDestination === 'function') {
+        this.mediaStreamDestination = this.audioContext.createMediaStreamDestination();
+        this.limiterNode.connect(this.mediaStreamDestination);
+      }
 
       this.floatFreqData = new Float32Array(this.analyser.frequencyBinCount);
       this.webAudioInitialized = true;
@@ -777,37 +899,43 @@ export class AudioEngine {
     this.callbacks = { ...this.callbacks, ...callbacks };
   }
 
+  private rampAudioParam(param: AudioParam, targetValue: number, transitionDuration: number = 0.05): void {
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      param.value = targetValue;
+      return;
+    }
+    try {
+      const currentTime = this.audioContext.currentTime;
+      if (typeof param.setTargetAtTime === 'function') {
+        param.setTargetAtTime(targetValue, currentTime, transitionDuration);
+      } else if (typeof param.linearRampToValueAtTime === 'function') {
+        param.linearRampToValueAtTime(targetValue, currentTime + transitionDuration);
+      } else {
+        param.value = targetValue;
+      }
+    } catch {
+      param.value = targetValue;
+    }
+  }
+
   private applyHeadroom(transitionDuration: number = 0.05): void {
     if (!this.headroomGain || !this.audioContext || this.audioContext.state === 'closed') return;
     try {
-      const currentTime = this.audioContext.currentTime;
-      // Headroom attenuation: when bass is boosted (> 0 dB), attenuate the master bus slightly (-0.28 dB per dB boost)
+      // Headroom attenuation: when bass or sub is boosted (> 0 dB), attenuate the master bus slightly
       // This maintains the boosted bass prominence while completely preventing DAC/OS digital clipping!
-      const headroomDb = this.currentBassGain > 0 ? -this.currentBassGain * 0.28 : 0;
+      const totalLowBoost = Math.max(0, this.currentBassGain) + Math.max(0, this.bandGains.sub) + Math.max(0, this.bandGains.low);
+      const headroomDb = totalLowBoost > 0 ? -totalLowBoost * 0.25 : 0;
       const targetGain = Math.pow(10, headroomDb / 20);
-      if (typeof this.headroomGain.gain.setTargetAtTime === 'function') {
-        this.headroomGain.gain.setTargetAtTime(targetGain, currentTime, transitionDuration);
-      } else {
-        this.headroomGain.gain.value = targetGain;
-      }
+      this.rampAudioParam(this.headroomGain.gain, targetGain, transitionDuration);
     } catch {}
   }
 
   public setBassGain(gainDb: number, transitionDuration: number = 0.05): void {
     this.currentBassGain = clamp(gainDb, -10, 15);
-    const presetOffset = EQ_PRESETS[this.currentEqPreset]?.bass || 0;
-    const effectiveGain = clamp(this.currentBassGain + presetOffset, -10, 15);
-    if (this.bassFilter && this.audioContext && this.audioContext.state !== 'closed') {
-      try {
-        const currentTime = this.audioContext.currentTime;
-        if (typeof this.bassFilter.gain.setTargetAtTime === 'function') {
-          this.bassFilter.gain.setTargetAtTime(effectiveGain, currentTime, transitionDuration);
-        } else {
-          this.bassFilter.gain.value = effectiveGain;
-        }
-      } catch {
-        this.bassFilter.gain.value = effectiveGain;
-      }
+    if (this.eqFilters.sub && this.audioContext && this.audioContext.state !== 'closed') {
+      const preset = EQ_PRESETS[this.currentEqPreset] || EQ_PRESETS.flat;
+      const subTarget = clamp(this.bandGains.sub + preset.sub + this.currentBassGain, -15, 18);
+      this.rampAudioParam(this.eqFilters.sub.gain, subTarget, transitionDuration);
     }
     this.applyHeadroom(transitionDuration);
   }
@@ -816,34 +944,340 @@ export class AudioEngine {
     return this.currentBassGain;
   }
 
-  public setEqPreset(preset: EqPreset, transitionDuration: number = 0.05): void {
-    this.currentEqPreset = preset;
-    const cfg = EQ_PRESETS[preset] || EQ_PRESETS.flat;
+  public setBandGain(band: EqBand, db: number, transitionDuration: number = 0.05): void {
+    const validBands: EqBand[] = ['sub', 'low', 'mid', 'upper-mid', 'high'];
+    if (!validBands.includes(band)) {
+      console.warn(`[HoregAudio] Invalid EQ band: "${band}". Valid bands are: ${validBands.join(', ')}`);
+      return;
+    }
+    const clampedGain = clamp(db, -15, 15);
+    this.bandGains[band] = clampedGain;
+
     if (this.audioContext && this.audioContext.state !== 'closed') {
-      const curTime = this.audioContext.currentTime;
-      if (this.eqMidFilter) {
-        try {
-          this.eqMidFilter.gain.setTargetAtTime(cfg.mid, curTime, transitionDuration);
-        } catch {
-          this.eqMidFilter.gain.value = cfg.mid;
+      const preset = EQ_PRESETS[this.currentEqPreset] || EQ_PRESETS.flat;
+      const filter = this.eqFilters[band];
+      if (filter) {
+        let target = 0;
+        if (band === 'sub') {
+          target = clamp(clampedGain + preset.sub + this.currentBassGain, -15, 18);
+        } else if (band === 'low') {
+          target = clamp(clampedGain + preset.low, -15, 15);
+        } else if (band === 'mid') {
+          target = clamp(clampedGain + preset.mid, -15, 15);
+        } else if (band === 'upper-mid') {
+          target = clamp(clampedGain + preset.upperMid, -15, 15);
+        } else if (band === 'high') {
+          target = clamp(clampedGain + preset.high, -15, 15);
         }
-      }
-      if (this.eqHighFilter) {
-        try {
-          this.eqHighFilter.gain.setTargetAtTime(cfg.high, curTime, transitionDuration);
-        } catch {
-          this.eqHighFilter.gain.value = cfg.high;
-        }
+        this.rampAudioParam(filter.gain, target, transitionDuration);
       }
     }
-    this.setBassGain(this.currentBassGain, transitionDuration);
+
+    this.applyHeadroom(transitionDuration);
+    if (this.callbacks.onBandGainChange) {
+      this.callbacks.onBandGainChange(band, clampedGain);
+    }
   }
 
-  public getEqPreset(): EqPreset {
+  public getBandGain(band: EqBand): number {
+    return this.bandGains[band] ?? 0;
+  }
+
+  public getBandGains(): Record<EqBand, number> {
+    return { ...this.bandGains };
+  }
+
+  public setEqualizerPreset(preset: EqPreset, transitionDuration: number = 0.05): void {
+    this.currentEqPreset = preset;
+    const cfg = EQ_PRESETS[preset] || EQ_PRESETS.flat;
+
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      if (this.eqFilters.sub) {
+        const subTarget = clamp(this.bandGains.sub + cfg.sub + this.currentBassGain, -15, 18);
+        this.rampAudioParam(this.eqFilters.sub.gain, subTarget, transitionDuration);
+      }
+      if (this.eqFilters.low) {
+        const lowTarget = clamp(this.bandGains.low + cfg.low, -15, 15);
+        this.rampAudioParam(this.eqFilters.low.gain, lowTarget, transitionDuration);
+      }
+      if (this.eqFilters.mid) {
+        const midTarget = clamp(this.bandGains.mid + cfg.mid, -15, 15);
+        this.rampAudioParam(this.eqFilters.mid.gain, midTarget, transitionDuration);
+      }
+      if (this.eqFilters['upper-mid']) {
+        const upperMidTarget = clamp(this.bandGains['upper-mid'] + cfg.upperMid, -15, 15);
+        this.rampAudioParam(this.eqFilters['upper-mid'].gain, upperMidTarget, transitionDuration);
+      }
+      if (this.eqFilters.high) {
+        const highTarget = clamp(this.bandGains.high + cfg.high, -15, 15);
+        this.rampAudioParam(this.eqFilters.high.gain, highTarget, transitionDuration);
+      }
+    }
+
+    this.applyHeadroom(transitionDuration);
+    if (this.callbacks.onEqChange) {
+      this.callbacks.onEqChange(preset);
+    }
+  }
+
+  public getEqualizerPreset(): EqPreset {
     return this.currentEqPreset;
   }
 
+  public setEqPreset(preset: EqPreset, transitionDuration: number = 0.05): void {
+    this.setEqualizerPreset(preset, transitionDuration);
+  }
+
+  public getEqPreset(): EqPreset {
+    return this.getEqualizerPreset();
+  }
+
+  public getLimiter(): DynamicsCompressorNode | null {
+    return this.limiterNode;
+  }
+
+  public getEqualizerFilters(): Record<EqBand, BiquadFilterNode | null> {
+    return { ...this.eqFilters };
+  }
+
+  // Streaming Adapter Methods
+  public isLiveStream(): boolean {
+    return this.streamAdapter ? this.streamAdapter.isLive() : false;
+  }
+
+  public getStreamInfo(): StreamInfo {
+    return this.streamAdapter ? this.streamAdapter.getStreamInfo() : this.currentStreamInfo;
+  }
+
+  // Modern Audio Stream Recording Methods
+  public isRecording(): boolean {
+    return this.isCurrentlyRecording;
+  }
+
+  public getRecordingDuration(): number {
+    if (!this.isCurrentlyRecording || this.recordingStartTime === 0) return 0;
+    return (Date.now() - this.recordingStartTime) / 1000;
+  }
+
+  public startRecording(options: RecordingOptions = {}): void {
+    if (this.isCurrentlyRecording) {
+      console.warn('[HoregAudio] Recording is already in progress.');
+      return;
+    }
+
+    this.initWebAudio();
+
+    this.isCurrentlyRecording = true;
+    this.recordingStartTime = Date.now();
+    this.recordedChunks = [];
+    this.pcmLeftChunks = [];
+    this.pcmRightChunks = [];
+
+    // 1. Capture raw PCM samples from post-limiter node for lossless 16-bit WAV export
+    if (this.audioContext && typeof this.audioContext.createScriptProcessor === 'function' && this.limiterNode) {
+      try {
+        this.pcmNode = this.audioContext.createScriptProcessor(4096, 2, 2);
+        this.pcmNode.onaudioprocess = (e) => {
+          if (!this.isCurrentlyRecording) return;
+          const inBuf = e.inputBuffer;
+          const left = inBuf.getChannelData(0);
+          const right = inBuf.numberOfChannels > 1 ? inBuf.getChannelData(1) : left;
+          this.pcmLeftChunks.push(new Float32Array(left));
+          this.pcmRightChunks.push(new Float32Array(right));
+        };
+        this.limiterNode.connect(this.pcmNode);
+        const dummyGain = this.audioContext.createGain();
+        dummyGain.gain.value = 0;
+        this.pcmNode.connect(dummyGain);
+        dummyGain.connect(this.audioContext.destination);
+      } catch (_) {}
+    }
+
+    // 2. MediaRecorder API capture on post-limiter MediaStream
+    const RecorderClass = typeof MediaRecorder !== 'undefined'
+      ? MediaRecorder
+      : (typeof window !== 'undefined' ? (window as any).MediaRecorder : null);
+
+    if (RecorderClass && this.mediaStreamDestination && this.mediaStreamDestination.stream) {
+      try {
+        let mimeType = options.mimeType;
+        if (!mimeType) {
+          if (typeof RecorderClass.isTypeSupported === 'function' && RecorderClass.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+          } else if (typeof RecorderClass.isTypeSupported === 'function' && RecorderClass.isTypeSupported('audio/webm')) {
+            mimeType = 'audio/webm';
+          } else {
+            mimeType = 'audio/webm';
+          }
+        }
+
+        const recOptions: any = {
+          audioBitsPerSecond: options.audioBitsPerSecond || 192000
+        };
+        if (typeof RecorderClass.isTypeSupported === 'function' && RecorderClass.isTypeSupported(mimeType)) {
+          recOptions.mimeType = mimeType;
+        }
+
+        const recorder = new RecorderClass(this.mediaStreamDestination.stream, recOptions);
+        recorder.ondataavailable = (event: any) => {
+          if (event.data && event.data.size > 0) {
+            this.recordedChunks.push(event.data);
+            if (this.callbacks.onRecordingData) {
+              this.callbacks.onRecordingData(event.data);
+            }
+          }
+        };
+        recorder.start(options.timeslice || 100);
+        this.mediaRecorder = recorder;
+      } catch (err) {
+        console.warn('[HoregAudio] MediaRecorder initiation notice:', err);
+      }
+    }
+
+    if (this.callbacks.onRecordingStart) {
+      this.callbacks.onRecordingStart();
+    }
+  }
+
+  public async stopRecording(format: RecordingFormat = 'webm'): Promise<Blob> {
+    if (!this.isCurrentlyRecording) {
+      return new Blob([], { type: format === 'wav' ? 'audio/wav' : 'audio/webm' });
+    }
+
+    this.isCurrentlyRecording = false;
+    const duration = this.getRecordingDuration();
+
+    // Clean up PCM processor node
+    if (this.pcmNode) {
+      try {
+        this.pcmNode.disconnect();
+      } catch (_) {}
+      this.pcmNode.onaudioprocess = null;
+      this.pcmNode = null;
+    }
+
+    let finalBlob: Blob;
+
+    if (format === 'wav') {
+      // Encode captured PCM channels to 16-bit PCM RIFF WAV
+      const totalSamples = this.pcmLeftChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      if (totalSamples > 0) {
+        const mergedLeft = new Float32Array(totalSamples);
+        const mergedRight = new Float32Array(totalSamples);
+        let offset = 0;
+        for (let i = 0; i < this.pcmLeftChunks.length; i++) {
+          mergedLeft.set(this.pcmLeftChunks[i], offset);
+          mergedRight.set(this.pcmRightChunks[i], offset);
+          offset += this.pcmLeftChunks[i].length;
+        }
+        const sampleRate = this.audioContext?.sampleRate || 44100;
+        finalBlob = encodePcmToWav([mergedLeft, mergedRight], sampleRate);
+      } else {
+        finalBlob = new Blob([], { type: 'audio/wav' });
+      }
+
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        try {
+          this.mediaRecorder.stop();
+        } catch (_) {}
+      }
+    } else {
+      // Default / WebM format
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        finalBlob = await new Promise<Blob>((resolve) => {
+          this.mediaRecorder!.onstop = () => {
+            const mime = (this.mediaRecorder && (this.mediaRecorder as any).mimeType) || 'audio/webm';
+            resolve(new Blob(this.recordedChunks, { type: mime }));
+          };
+          try {
+            this.mediaRecorder!.stop();
+          } catch (_) {
+            resolve(new Blob(this.recordedChunks, { type: 'audio/webm' }));
+          }
+        });
+      } else if (this.recordedChunks.length > 0) {
+        finalBlob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+      } else {
+        // Fallback to PCM wav if webm is empty
+        const totalSamples = this.pcmLeftChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+        if (totalSamples > 0) {
+          const mergedLeft = new Float32Array(totalSamples);
+          const mergedRight = new Float32Array(totalSamples);
+          let offset = 0;
+          for (let i = 0; i < this.pcmLeftChunks.length; i++) {
+            mergedLeft.set(this.pcmLeftChunks[i], offset);
+            mergedRight.set(this.pcmRightChunks[i], offset);
+            offset += this.pcmLeftChunks[i].length;
+          }
+          finalBlob = encodePcmToWav([mergedLeft, mergedRight], this.audioContext?.sampleRate || 44100);
+        } else {
+          finalBlob = new Blob([], { type: 'audio/webm' });
+        }
+      }
+    }
+
+    const blobUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(finalBlob)
+      : '';
+
+    const result: RecordingResult = {
+      blob: finalBlob,
+      url: blobUrl,
+      format,
+      duration,
+      download: (filename?: string) => {
+        const name = filename || `horeg-recording-${Date.now()}.${format}`;
+        if (typeof document !== 'undefined') {
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      }
+    };
+
+    if (this.callbacks.onRecordingStop) {
+      this.callbacks.onRecordingStop(result);
+    }
+
+    return finalBlob;
+  }
+
+  public async exportRecording(format: RecordingFormat = 'webm', filename?: string): Promise<RecordingResult> {
+    const blob = await this.stopRecording(format);
+    const duration = this.getRecordingDuration();
+    const blobUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(blob)
+      : '';
+
+    return {
+      blob,
+      url: blobUrl,
+      format,
+      duration,
+      download: (customName?: string) => {
+        const name = customName || filename || `horeg-recording-${Date.now()}.${format}`;
+        if (typeof document !== 'undefined') {
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+      }
+    };
+  }
+
   public destroy(): void {
+    if (this.isCurrentlyRecording) {
+      this.stopRecording().catch(() => {});
+    }
+    if (this.streamAdapter) {
+      this.streamAdapter.destroy();
+    }
     this.detachEvents();
     this.audio.pause();
     this.audio.src = '';
@@ -853,23 +1287,13 @@ export class AudioEngine {
       this.preloadAudio.load();
       this.preloadAudio = null;
     }
-    if (this.bassFilter) {
-      try {
-        this.bassFilter.disconnect();
-      } catch {}
-      this.bassFilter = null;
-    }
-    if (this.eqMidFilter) {
-      try {
-        this.eqMidFilter.disconnect();
-      } catch {}
-      this.eqMidFilter = null;
-    }
-    if (this.eqHighFilter) {
-      try {
-        this.eqHighFilter.disconnect();
-      } catch {}
-      this.eqHighFilter = null;
+    for (const b of ['sub', 'low', 'mid', 'upper-mid', 'high'] as EqBand[]) {
+      if (this.eqFilters[b]) {
+        try {
+          this.eqFilters[b]!.disconnect();
+        } catch {}
+        this.eqFilters[b] = null;
+      }
     }
     if (this.headroomGain) {
       try {
@@ -888,6 +1312,12 @@ export class AudioEngine {
         this.limiterNode.disconnect();
       } catch {}
       this.limiterNode = null;
+    }
+    if (this.mediaStreamDestination) {
+      try {
+        this.mediaStreamDestination.disconnect();
+      } catch {}
+      this.mediaStreamDestination = null;
     }
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(() => {});
