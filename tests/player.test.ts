@@ -114,4 +114,99 @@ describe('AudioEngine Unit Tests', () => {
     expect(typeof energy.midHigh).toBe('number');
     expect(typeof energy.bassDb).toBe('number');
   });
+
+  it('should initialize all 5 equalizer bands in AudioEngine', () => {
+    engine.initWebAudio();
+    const filters = engine.getEqualizerFilters();
+    expect(filters.sub).toBeDefined();
+    expect(filters.low).toBeDefined();
+    expect(filters.mid).toBeDefined();
+    expect(filters['upper-mid']).toBeDefined();
+    expect(filters.high).toBeDefined();
+
+    expect(filters.sub?.type).toBe('lowshelf');
+    expect(filters.low?.type).toBe('peaking');
+    expect(filters.mid?.type).toBe('peaking');
+    expect(filters['upper-mid']?.type).toBe('peaking');
+    expect(filters.high?.type).toBe('highshelf');
+  });
+
+  it('should get and set individual band gains with clamping', () => {
+    engine.initWebAudio();
+
+    engine.setBandGain('sub', 6);
+    expect(engine.getBandGain('sub')).toBe(6);
+
+    engine.setBandGain('low', -4);
+    expect(engine.getBandGain('low')).toBe(-4);
+
+    engine.setBandGain('mid', 3);
+    expect(engine.getBandGain('mid')).toBe(3);
+
+    engine.setBandGain('upper-mid', 5);
+    expect(engine.getBandGain('upper-mid')).toBe(5);
+
+    engine.setBandGain('high', -2);
+    expect(engine.getBandGain('high')).toBe(-2);
+
+    // Clamping: max 15, min -15
+    engine.setBandGain('sub', 25);
+    expect(engine.getBandGain('sub')).toBe(15);
+
+    engine.setBandGain('high', -30);
+    expect(engine.getBandGain('high')).toBe(-15);
+
+    const allGains = engine.getBandGains();
+    expect(allGains.sub).toBe(15);
+    expect(allGains.low).toBe(-4);
+    expect(allGains.mid).toBe(3);
+    expect(allGains['upper-mid']).toBe(5);
+    expect(allGains.high).toBe(-15);
+  });
+
+  it('should update filter gains when switching equalizer presets', () => {
+    engine.initWebAudio();
+
+    engine.setEqualizerPreset('horeg-sub-punch');
+    expect(engine.getEqualizerPreset()).toBe('horeg-sub-punch');
+
+    engine.setEqualizerPreset('vocal-carnival');
+    expect(engine.getEqualizerPreset()).toBe('vocal-carnival');
+
+    engine.setEqualizerPreset('bass-extreme');
+    expect(engine.getEqualizerPreset()).toBe('bass-extreme');
+
+    engine.setEqualizerPreset('flat');
+    expect(engine.getEqualizerPreset()).toBe('flat');
+  });
+
+  it('should trigger onBandGainChange and onEqChange callbacks', () => {
+    const onEqChange = vi.fn();
+    const onBandGainChange = vi.fn();
+
+    const cbEngine = new AudioEngine({
+      playlist: [...sampleTracks]
+    }, {
+      onEqChange,
+      onBandGainChange
+    });
+
+    cbEngine.setEqualizerPreset('horeg-sub-punch');
+    expect(onEqChange).toHaveBeenCalledWith('horeg-sub-punch');
+
+    cbEngine.setBandGain('mid', 4);
+    expect(onBandGainChange).toHaveBeenCalledWith('mid', 4);
+  });
+
+  it('should initialize dynamic brickwall limiter node with anti-clipping parameters', () => {
+    engine.initWebAudio();
+    const limiter = engine.getLimiter();
+    expect(limiter).toBeDefined();
+    expect(limiter).not.toBeNull();
+    expect(limiter?.threshold.value).toBe(-0.5);
+    expect(limiter?.knee.value).toBe(3.0);
+    expect(limiter?.ratio.value).toBe(20.0);
+    expect(limiter?.attack.value).toBe(0.002);
+    expect(limiter?.release.value).toBe(0.080);
+  });
 });
