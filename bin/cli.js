@@ -3,8 +3,11 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import playSound from 'play-sound';
+import soundPlay from 'sound-play';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -413,6 +416,152 @@ export function renderAsciiVisualizer(bassLevel = 6, time = 0, isPlaying = true)
   };
 }
 
+// Synthesize authentic Horeg demo audio buffer (PCM WAV with deep sub-bass and kick)
+export function createDemoWavBuffer(durationSec = 20, tempo = 130, bassFreq = 50) {
+  const sampleRate = 44100;
+  const numSamples = Math.floor(sampleRate * durationSec);
+  const dataSize = numSamples * 2;
+  const buf = Buffer.alloc(44 + dataSize);
+
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20); // PCM
+  buf.writeUInt16LE(1, 22); // mono
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * 2, 28); // byteRate
+  buf.writeUInt16LE(2, 32); // blockAlign
+  buf.writeUInt16LE(16, 34); // bitsPerSample
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataSize, 40);
+
+  const beatInterval = 60 / tempo;
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const beatPhase = (t % beatInterval) / beatInterval;
+    const kick = Math.pow(Math.max(0, 1 - beatPhase * 3.5), 2.5);
+    const sub = Math.sin(2 * Math.PI * bassFreq * t) * 0.7;
+    const val = Math.max(-1, Math.min(1, kick * 0.8 + sub * 0.5));
+    buf.writeInt16LE(Math.floor(val * 32767), 44 + i * 2);
+  }
+  return buf;
+}
+
+export function getOrCreateDemoAudioFiles() {
+  const tmpDir = path.join(os.tmpdir(), 'horeg-audio-demo');
+  if (!fs.existsSync(tmpDir)) {
+    try {
+      fs.mkdirSync(tmpDir, { recursive: true });
+    } catch (_) {}
+  }
+
+  const track1Path = path.join(tmpDir, 'karnaval-sound-horeg.wav');
+  const track2Path = path.join(tmpDir, 'subwoofer-rumble-test.wav');
+
+  try {
+    if (!fs.existsSync(track1Path)) {
+      fs.writeFileSync(track1Path, createDemoWavBuffer(20, 130, 52));
+    }
+    if (!fs.existsSync(track2Path)) {
+      fs.writeFileSync(track2Path, createDemoWavBuffer(20, 110, 38));
+    }
+  } catch (_) {}
+
+  return { track1Path, track2Path };
+}
+
+// Native audio playback bridge powered by node packages (play-sound & sound-play)
+export class NodeAudioPlayer {
+  constructor() {
+    this.currentProcess = null;
+    this.currentPath = null;
+    this.volume = 0.8;
+    this.isPlaying = false;
+    try {
+      this.player = typeof playSound === 'function' ? playSound() : null;
+    } catch (_) {
+      this.player = null;
+    }
+  }
+
+  playTrack(audioPath, volume = 0.8) {
+    this.stop();
+    this.currentPath = audioPath;
+    this.volume = volume;
+    this.isPlaying = true;
+
+    if (!audioPath || typeof audioPath !== 'string') return;
+
+    try {
+      // Primary engine: play-sound package (provides ChildProcess kill control)
+      if (this.player) {
+        const isWin = process.platform === 'win32';
+        const isMac = process.platform === 'darwin';
+
+        const opts = {};
+        if (isWin) {
+          const psCommand = `Add-Type -AssemblyName presentationCore; $p = New-Object system.windows.media.mediaplayer; $p.open($args[0]); $p.Volume = ${this.volume}; $p.Play(); Start-Sleep -s 86400; Exit;`;
+          opts.powershell = ['-NoProfile', '-Command', psCommand, '--'];
+        } else if (isMac) {
+          opts.afplay = ['-v', String(this.volume)];
+        }
+
+        const proc = this.player.play(audioPath, opts, (err) => {
+          if (err && !err.killed) {
+            // Secondary fallback: sound-play package
+            if (this.isPlaying && soundPlay && typeof soundPlay.play === 'function') {
+              soundPlay.play(audioPath, this.volume).catch(() => {});
+            }
+          }
+        });
+
+        this.currentProcess = proc;
+        return;
+      }
+    } catch (_) {}
+
+    // Fallback engine: sound-play package
+    try {
+      if (soundPlay && typeof soundPlay.play === 'function') {
+        soundPlay.play(audioPath, this.volume).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  pause() {
+    this.isPlaying = false;
+    this.stop();
+  }
+
+  resume(audioPath, volume) {
+    const target = audioPath || this.currentPath;
+    const vol = volume !== undefined ? volume : this.volume;
+    if (target) {
+      this.playTrack(target, vol);
+    }
+  }
+
+  setVolume(volume) {
+    this.volume = Math.max(0, Math.min(1, volume));
+  }
+
+  stop() {
+    if (this.currentProcess) {
+      try {
+        this.currentProcess.kill();
+      } catch (_) {}
+      this.currentProcess = null;
+    }
+  }
+
+  destroy() {
+    this.isPlaying = false;
+    this.stop();
+  }
+}
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -540,7 +689,8 @@ export function startCli(argv = process.argv.slice(2)) {
             album: rootDir || 'Horeg Audio Files',
             duration,
             coverArt,
-            src: `/audio-files/${encodeURI(relPath)}`
+            src: `/audio-files/${encodeURI(relPath)}`,
+            fullPath: fullPath
           };
         });
       } else {
@@ -554,6 +704,7 @@ export function startCli(argv = process.argv.slice(2)) {
   }
 
   if (customPlaylist.length === 0) {
+    const { track1Path, track2Path } = getOrCreateDemoAudioFiles();
     customPlaylist = [
       {
         id: 1,
@@ -561,7 +712,8 @@ export function startCli(argv = process.argv.slice(2)) {
         artist: 'DJ Horeg Sound System',
         album: 'Festival Audio Jawa 2026',
         duration: 214,
-        src: 'https://cdn.jsdelivr.net/gh/ryomario/horeg-audio@main/demo/sample-bass.mp3'
+        src: '/demo-audio/karnaval-sound-horeg.wav',
+        fullPath: track1Path
       },
       {
         id: 2,
@@ -569,7 +721,8 @@ export function startCli(argv = process.argv.slice(2)) {
         artist: 'Audio Laboratory',
         album: 'Extreme Excursion Series',
         duration: 180,
-        src: 'https://cdn.jsdelivr.net/gh/ryomario/horeg-audio@main/demo/sample-sub.mp3'
+        src: '/demo-audio/subwoofer-rumble-test.wav',
+        fullPath: track2Path
       }
     ];
   }
@@ -583,6 +736,16 @@ export function startCli(argv = process.argv.slice(2)) {
   const server = http.createServer((req, res) => {
     const parsedUrl = new URL(req.url, `http://localhost:${port}`);
     let pathname = decodeURIComponent(parsedUrl.pathname);
+
+    if (pathname.startsWith('/demo-audio/')) {
+      const rel = pathname.slice('/demo-audio/'.length);
+      const tmpDir = path.join(os.tmpdir(), 'horeg-audio-demo');
+      const filePath = path.join(tmpDir, rel);
+      if (fs.existsSync(filePath)) {
+        streamFileWithRanges(filePath, req, res, 'audio/wav');
+        return;
+      }
+    }
 
     if (pathname.startsWith('/audio-files/') && customAudioDir) {
       const rel = pathname.slice('/audio-files/'.length);
@@ -764,6 +927,19 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
   };
 
   const bassLevels = [-6, 0, 4, 8, 12, 15];
+  const audioPlayer = new NodeAudioPlayer();
+
+  const playTrackAtIndex = (index) => {
+    const curTrack = playlist[index];
+    if (!curTrack) return;
+    const targetPath = curTrack.fullPath || (curTrack.src && curTrack.src.startsWith('http') ? curTrack.src : `${webUrl}${curTrack.src}`);
+    if (state.isPlaying) {
+      audioPlayer.playTrack(targetPath, state.volume);
+    }
+  };
+
+  // Start audio playback for current track
+  playTrackAtIndex(state.currentIndex);
 
   // Hide cursor in TTY
   if (process.stdout.isTTY) {
@@ -775,6 +951,7 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
       process.stdout.write('\x1B[?25h');
     }
     clearInterval(timer);
+    audioPlayer.destroy();
     onClose();
   };
 
@@ -849,17 +1026,21 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
       if (state.currentTime >= dur) {
         if (state.loopMode === 'one') {
           state.currentTime = 0;
+          playTrackAtIndex(state.currentIndex);
         } else {
           // Next track
           if (state.currentIndex + 1 < playlist.length) {
             state.currentIndex++;
             state.currentTime = 0;
+            playTrackAtIndex(state.currentIndex);
           } else if (state.loopMode === 'all') {
             state.currentIndex = 0;
             state.currentTime = 0;
+            playTrackAtIndex(state.currentIndex);
           } else {
             state.isPlaying = false;
             state.currentTime = dur;
+            audioPlayer.stop();
           }
         }
       }
@@ -883,6 +1064,11 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
       // Space: play/pause
       if (key === ' ') {
         state.isPlaying = !state.isPlaying;
+        if (state.isPlaying) {
+          playTrackAtIndex(state.currentIndex);
+        } else {
+          audioPlayer.pause();
+        }
         render();
         return;
       }
@@ -906,6 +1092,7 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
       // Up arrow: vol +0.05
       if (key === '\u001b[A') {
         state.volume = Math.min(1, Math.round((state.volume + 0.05) * 100) / 100);
+        audioPlayer.setVolume(state.volume);
         render();
         return;
       }
@@ -913,6 +1100,7 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
       // Down arrow: vol -0.05
       if (key === '\u001b[B') {
         state.volume = Math.max(0, Math.round((state.volume - 0.05) * 100) / 100);
+        audioPlayer.setVolume(state.volume);
         render();
         return;
       }
@@ -934,6 +1122,7 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
           state.currentIndex = (state.currentIndex + 1) % playlist.length;
         }
         state.currentTime = 0;
+        playTrackAtIndex(state.currentIndex);
         render();
         return;
       }
@@ -942,6 +1131,7 @@ function startTuiMode({ playlist, webUrl, openBrowser, onClose }) {
       if (key.toLowerCase() === 'p') {
         state.currentIndex = (state.currentIndex - 1 + playlist.length) % playlist.length;
         state.currentTime = 0;
+        playTrackAtIndex(state.currentIndex);
         render();
         return;
       }

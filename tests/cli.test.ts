@@ -9,7 +9,10 @@ import {
   renderAsciiVisualizer,
   findAudioFiles,
   estimateDuration,
-  AUDIO_EXTENSIONS
+  AUDIO_EXTENSIONS,
+  createDemoWavBuffer,
+  getOrCreateDemoAudioFiles,
+  NodeAudioPlayer
 } from '../bin/cli.js';
 
 describe('CLI & TUI Unit Tests', () => {
@@ -123,6 +126,48 @@ describe('CLI & TUI Unit Tests', () => {
 
       // Clean up
       fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+  });
+
+  describe('NodeAudioPlayer & Demo Audio Generator', () => {
+    it('should generate valid WAV buffer with RIFF and fmt headers', () => {
+      const buf = createDemoWavBuffer(1, 130, 50);
+      expect(buf.toString('ascii', 0, 4)).toBe('RIFF');
+      expect(buf.toString('ascii', 8, 12)).toBe('WAVE');
+      expect(buf.toString('ascii', 12, 16)).toBe('fmt ');
+      expect(buf.length).toBeGreaterThan(44);
+    });
+
+    it('should create and cache demo audio files in temp directory', () => {
+      const { track1Path, track2Path } = getOrCreateDemoAudioFiles();
+      expect(fs.existsSync(track1Path)).toBe(true);
+      expect(fs.existsSync(track2Path)).toBe(true);
+      expect(fs.statSync(track1Path).size).toBeGreaterThan(1000);
+      expect(fs.statSync(track2Path).size).toBeGreaterThan(1000);
+    });
+
+    it('should instantiate NodeAudioPlayer with play, pause, resume, volume, stop, and destroy', () => {
+      const player = new NodeAudioPlayer();
+      expect(player.isPlaying).toBe(false);
+      expect(player.volume).toBe(0.8);
+
+      // Volume control
+      player.setVolume(0.5);
+      expect(player.volume).toBe(0.5);
+      player.setVolume(1.5);
+      expect(player.volume).toBe(1);
+      player.setVolume(-0.2);
+      expect(player.volume).toBe(0);
+
+      // Playback lifecycle with invalid or dummy path does not throw
+      expect(() => player.playTrack(null as any)).not.toThrow();
+      expect(() => player.pause()).not.toThrow();
+      expect(player.isPlaying).toBe(false);
+
+      expect(() => player.resume()).not.toThrow();
+      expect(() => player.stop()).not.toThrow();
+      expect(() => player.destroy()).not.toThrow();
+      expect(player.isPlaying).toBe(false);
     });
   });
 });
