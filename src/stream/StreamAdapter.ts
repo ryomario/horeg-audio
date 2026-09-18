@@ -23,7 +23,7 @@ export function detectStreamType(url: string): StreamType {
     strippedUrl.endsWith('/listen') ||
     url.includes('icecast') ||
     url.includes('shoutcast') ||
-    /:[0-9]{4,5}\/(stream|;)?/i.test(url)
+    /:[0-9]{4,5}\/(stream|;)/i.test(url)
   ) {
     return 'radio';
   }
