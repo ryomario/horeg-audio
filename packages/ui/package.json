@@ -1,0 +1,27 @@
+{
+  "name": "@horeg-audio/ui",
+  "version": "1.4.0",
+  "description": "Encapsulated Shadow DOM audio player presenter and custom Web Component (<horeg-audio>) for sound horeg aesthetics.",
+  "author": "Mario <ardamomo3@gmail.com>",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "dependencies": {
+    "@horeg-audio/core": "workspace:*"
+  },
+  "keywords": [
+    "horeg-audio",
+    "web-component",
+    "custom-elements",
+    "shadow-dom",
+    "sound-horeg"
+  ]
+}

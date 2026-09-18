@@ -1,0 +1,32 @@
+{
+  "name": "@horeg-audio/react",
+  "version": "1.4.0",
+  "description": "Official React wrapper & custom hooks for sound horeg audio player and Web Audio API engine.",
+  "author": "Mario <ardamomo3@gmail.com>",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0"
+  },
+  "dependencies": {
+    "@horeg-audio/core": "workspace:*",
+    "@horeg-audio/ui": "workspace:*"
+  },
+  "keywords": [
+    "horeg-audio",
+    "react",
+    "react-audio-player",
+    "hooks",
+    "use-audio",
+    "sound-horeg"
+  ]
+}
